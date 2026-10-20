@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 
 namespace PCLDownloadFix
 {
@@ -6,9 +7,23 @@ namespace PCLDownloadFix
     {
         public const string Author = "Ethernos Studio";
         public const string ProductName = "PCL 下载修复器（第三方）";
-        public const string Version = "1.0.0";
         public const string ProjectUrl = "https://github.com/Ethernos-Studio/PCLDownloadFix";
         public const string ReferenceUrl = "https://github.com/Jelly10086/PCL-Re.Download_PATCH";
+
+        public static string ProductVersion
+        {
+            get
+            {
+                var assembly = typeof(DisclaimerText).Assembly;
+                var informational = (AssemblyInformationalVersionAttribute)Attribute.GetCustomAttribute(
+                    assembly, typeof(AssemblyInformationalVersionAttribute));
+                if (informational != null && !string.IsNullOrEmpty(informational.InformationalVersion))
+                    return informational.InformationalVersion.Split('+')[0];
+
+                var version = assembly.GetName().Version;
+                return version == null ? "0.0.0" : version.ToString(3);
+            }
+        }
 
         public static readonly string[] Paragraphs =
         {

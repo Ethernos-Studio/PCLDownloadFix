@@ -1,0 +1,73 @@
+name: 缺陷报告
+description: 修复/还原失败、状态识别异常、界面问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先确认使用的是**官方发布包**，并附上机器可读的状态信息。
+        不要在 Issue 中上传完整的 PCL EXE 或包含个人路径的日志；可以先把用户名/目录替换为 `***`。
+
+  - type: input
+    id: tool-version
+    attributes:
+      label: 工具版本
+      description: 运行 `PCL下载修复器-控制台.exe version` 或查看窗口右上角
+      placeholder: "1.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本
+      placeholder: "Windows 11 23H2 / Windows 10 22H2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: verify-json
+    attributes:
+      label: verify --json 输出
+      description: 运行 `PCL下载修复器-控制台.exe verify "<PCL路径>" --yes --json`，粘贴完整 JSON
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 将工具放在 ...
+        2. 点击 ...
+        3. 看到 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果与实际结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志/截图（可选）
+      description: GUI 可点击“保存”导出日志；命令行可附 stderr。请勿包含个人隐私。
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已阅读 README 的“常见问题”，并确认 PCL 已完全关闭
+          required: true
+        - label: 我使用的是官方发布包，或从本仓库源码自行构建
+          required: true

@@ -52,12 +52,15 @@ namespace PCLDownloadFix
 
     public sealed class Patcher
     {
+        private const string PreRestrictionHash = "5582952ded3b443503f66c23b810802bd20f1a3e847b54d9e09653a825859a36";
+        private static readonly TimeSpan WriteLockTimeout = TimeSpan.FromSeconds(10);
+
         private static readonly Dictionary<string, string> KnownBuilds =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { "6b6e1260cb5a1d6a303855f1c60cab3d0bc1aebba7e40a964180188b271e7386", "PCL 2.99.0.0 正式版 (413)" },
                 { "5b64d6d540c376390470cea3ab99d47661e8bca81be2ba647ea83e7d2e9428fa", "PCL 2.99.0.0 快照版 (414)" },
-                { "5582952ded3b443503f66c23b810802bd20f1a3e847b54d9e09653a825859a36", "PCL 2.14.0.0 正式版 (412，限制前实现)" },
+                { PreRestrictionHash, "PCL 2.14.0.0 正式版 (412，限制前实现)" },
                 { "d4fe05b8c713c573fcd46e0efa1dc9b5463f5ec4fd03c3d9279d523e48f8d0bd", "PCL 2.99.0.0 正式版 + 官方下载补丁 (413)" }
             };
 
@@ -96,7 +99,7 @@ namespace PCLDownloadFix
                 Path = full,
                 Size = new FileInfo(full).Length,
                 Sha256 = HashUtil.Sha256File(full),
-                BackupPath = full + ".pcl-original.bak"
+                BackupPath = BackupStore.LegacyPath(full)
             };
 
             try
@@ -115,15 +118,57 @@ namespace PCLDownloadFix
                 string detail;
                 info.State = target.GetState(out detail);
                 info.Message = detail;
-                info.IsSupported = info.State != PatchState.Unsupported;
             }
 
-            info.BuildLabel = DescribeBuild(info);
-            info.NoFixNeeded = string.Equals(info.Sha256,
-                "5582952ded3b443503f66c23b810802bd20f1a3e847b54d9e09653a825859a36",
-                StringComparison.OrdinalIgnoreCase);
+            if (info.State == PatchState.Unsupported)
+            {
+                // A known pre-restriction build can still be identified by hash even if
+                // its method shapes differ from the five known PCL 2.99 signatures.
+                if (string.Equals(info.Sha256, PreRestrictionHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    info.State = PatchState.Unrestricted;
+                    info.Message = "该版本是下载限制前的官方实现，已具备完整下载功能。";
+                }
+            }
+
             InspectBackup(info);
+
+            // GetState cannot tell "patched by this tool" from "officially unrestricted"
+            // because both look the same in IL. A valid original backup is the evidence
+            // that this file was patched and can be restored.
+            if (info.State == PatchState.Unrestricted && info.BackupExists && info.BackupIsValidOriginal)
+                info.State = PatchState.Patched;
+
+            if (string.Equals(info.Sha256, PreRestrictionHash, StringComparison.OrdinalIgnoreCase))
+                info.State = PatchState.Unrestricted;
+
+            info.IsPreRestriction = string.Equals(info.Sha256, PreRestrictionHash, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(info.AssemblyVersion) &&
+                                     info.AssemblyVersion.StartsWith("2.14", StringComparison.Ordinal));
+
+            var autoUpdate = AutoUpdateSettings.Read(full);
+            info.SetupIniPath = autoUpdate.SetupIniPath;
+            info.AutoUpdateState = autoUpdate.State;
+            info.AutoUpdateValue = autoUpdate.Value;
+            info.AutoUpdateText = autoUpdate.Text;
+            info.AutoUpdateError = autoUpdate.Error;
+
+            info.NoFixNeeded = info.State == PatchState.Unrestricted;
+            info.IsSupported = info.State != PatchState.Unsupported && info.State != PatchState.Error;
+            info.BuildLabel = DescribeBuild(info);
             return info;
+        }
+
+        public AutoUpdateChange DisableAutoUpdate(string path)
+        {
+            var info = Inspect(path);
+            return AutoUpdateSettings.Disable(info.Path, true, _log);
+        }
+
+        public AutoUpdateChange EnableAutoUpdate(string path)
+        {
+            var info = Inspect(path);
+            return AutoUpdateSettings.Enable(info.Path, _log);
         }
 
         public PatchResult Apply(string path, PatchOptions options)
@@ -142,26 +187,38 @@ namespace PCLDownloadFix
             Emit(LogLevel.Info, "SHA-256：" + info.Sha256);
             Emit(LogLevel.Info, "补丁状态：" + info.StateText + "（" + info.Message + "）");
 
-            if (info.State == PatchState.Patched)
+            if (info.State == PatchState.Patched || info.State == PatchState.Unrestricted)
             {
                 var message = info.NoFixNeeded
-                    ? "该版本是下载限制前的官方实现，已经具备完整下载功能，无需修复。"
+                    ? "该文件已具备完整下载功能，无需修复。"
                     : "该文件已经应用过下载修复，无需重复操作。";
                 Emit(LogLevel.Success, message);
                 result.Success = true;
                 result.AlreadyPatched = true;
                 result.Message = message;
                 result.OutputPath = info.Path;
+
+                // Keep --output meaningful even when the input is already usable: the
+                // caller asked for a copy, not for another patch operation.
+                if (!string.IsNullOrWhiteSpace(options.OutputPath) && !IsSamePath(options.OutputPath, info.Path))
+                {
+                    var copy = Path.GetFullPath(options.OutputPath);
+                    if (!options.DryRun)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(copy));
+                        File.Copy(info.Path, copy, true);
+                    }
+                    result.OutputPath = copy;
+                }
+
                 result.PatchedSha256 = info.Sha256;
                 result.Elapsed = stopwatch.Elapsed;
                 return result;
             }
             if (!info.IsSupported || info.State == PatchState.Unsupported)
-                throw new PatchException("此版本不受支持：" + info.Message);
+                throw new UnsupportedTargetException("此版本不受支持：" + info.Message);
             if (info.State == PatchState.Error)
                 throw new PatchException("无法读取此文件：" + info.Message);
-
-            PclProcess.EnsureNotRunning(info.Path);
 
             var output = string.IsNullOrWhiteSpace(options.OutputPath) || IsSamePath(options.OutputPath, info.Path)
                 ? info.Path
@@ -169,14 +226,29 @@ namespace PCLDownloadFix
             var inPlace = IsSamePath(output, info.Path);
             if (!inPlace) Directory.CreateDirectory(Path.GetDirectoryName(output));
 
+            if (inPlace && info.State == PatchState.Partial &&
+                (!info.BackupExists || !info.BackupIsValidOriginal) &&
+                options.CreateBackup)
+            {
+                throw new PatchException(
+                    "检测到部分修复，但没有可用的原版备份。\r\n" +
+                    "继续修复会把部分修复后的文件误当作原版备份，导致以后无法安全还原，因此已中止。\r\n" +
+                    "请重新获取官方原版 PCL 后再执行修复。");
+            }
+
+            PclProcess.EnsureNotRunning(info.Path);
+
             using (var temp = TempDirectory.Create("patch"))
             {
                 string tempFile = null;
                 Dictionary<string, string> patchedSemantics = null;
+                AssemblyFingerprint originalFingerprint = null;
                 try
                 {
                     using (var target = PclTarget.Load(info.Path))
                     {
+                        originalFingerprint = AssemblyFingerprint.Capture(target.Assembly);
+
                         Emit(LogLevel.Step, "[2/7] 提取 PCL 内嵌依赖...");
                         var dependencies = target.ExtractDependencies(temp.Path);
                         target.AddSearchDirectory(Path.GetDirectoryName(info.Path));
@@ -198,6 +270,9 @@ namespace PCLDownloadFix
                         var diff = MethodSemantics.Diff(before, after);
                         ValidateDiff(target, diff);
 
+                        var patchedFingerprint = AssemblyFingerprint.Capture(target.Assembly);
+                        originalFingerprint.EnsureSame(patchedFingerprint, "修复过程中");
+
                         Emit(LogLevel.Step, "[5/7] 校验修复状态...");
                         ValidatePatched(target);
 
@@ -214,9 +289,10 @@ namespace PCLDownloadFix
                     {
                         string detail;
                         var state = verified.GetState(out detail);
-                        if (state != PatchState.Patched)
+                        if (state != PatchState.Patched && state != PatchState.Unrestricted)
                             throw new PatchException("写入后的程序集校验失败：" + detail);
                         ValidatePatched(verified);
+                        originalFingerprint.EnsureSame(AssemblyFingerprint.Capture(verified.Assembly), "写入后");
 
                         if (options.Verify)
                         {
@@ -239,24 +315,71 @@ namespace PCLDownloadFix
                         return result;
                     }
 
-                    if (inPlace && options.CreateBackup)
-                        EnsureBackup(info.Path, info.Sha256);
+                    using (TargetLock.Acquire(info.Path, WriteLockTimeout))
+                    {
+                        if (inPlace && options.CreateBackup)
+                        {
+                            if (info.State == PatchState.Partial && info.BackupExists && info.BackupIsValidOriginal)
+                            {
+                                // Preserve the original backup that already belongs to this
+                                // partially patched file; never archive it as if it were the
+                                // previous version's backup.
+                                result.BackupPath = info.BackupPath;
+                                Emit(LogLevel.Info, "保留现有原版备份：" + result.BackupPath);
+                            }
+                            else
+                            {
+                                result.BackupPath = BackupStore.EnsureOriginalBackup(info.Path, info.Sha256, _log);
+                            }
+                        }
 
-                    PclProcess.EnsureNotRunning(info.Path);
-                    var currentHash = HashUtil.Sha256File(info.Path);
-                    if (!string.Equals(currentHash, info.Sha256, StringComparison.OrdinalIgnoreCase))
-                        throw new PatchException("目标文件在修复过程中发生了变化，已中止操作，没有替换文件。");
+                        PclProcess.EnsureNotRunning(info.Path);
+                        var currentHash = HashUtil.Sha256File(info.Path);
+                        if (!string.Equals(currentHash, info.Sha256, StringComparison.OrdinalIgnoreCase))
+                            throw new PatchException("目标文件在修复过程中发生了变化，已中止操作，没有替换文件。");
 
-                    Emit(LogLevel.Step, inPlace ? "应用修复（原子替换）..." : "写入输出文件...");
-                    ReplaceFile(tempFile, output);
-                    tempFile = null;
+                        Emit(LogLevel.Step, inPlace ? "应用修复（原子替换）..." : "写入输出文件...");
+                        FileOps.Replace(tempFile, output);
+                        tempFile = null;
+                    }
+
+                    var finalHash = HashUtil.Sha256File(output);
+                    if (!string.Equals(finalHash, result.PatchedSha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new PatchException("替换后的文件哈希与校验结果不一致，请立即检查：" + output +
+                            (result.BackupPath == null ? "" : "\r\n原版备份：" + result.BackupPath));
+                    }
 
                     result.Success = true;
                     result.OutputPath = output;
-                    result.BackupPath = inPlace && options.CreateBackup ? info.BackupPath : null;
-                    result.PatchedSha256 = HashUtil.Sha256File(output);
+                    result.PatchedSha256 = finalHash;
                     result.Elapsed = stopwatch.Elapsed;
                     result.Message = inPlace ? "修复完成。" : "已生成修复后的副本。";
+
+                    if (inPlace)
+                    {
+                        var originalHash = info.State == PatchState.Partial
+                            ? info.BackupSha256
+                            : info.Sha256;
+                        var manifest = new PatchManifest
+                        {
+                            OriginalSha256 = originalHash,
+                            PatchedSha256 = result.PatchedSha256,
+                            BackupFile = options.CreateBackup && result.BackupPath != null
+                                ? Path.GetFileName(result.BackupPath)
+                                : "",
+                            Build = info.BuildLabel,
+                            ToolVersion = DisclaimerText.ProductVersion,
+                            CreatedUtc = DateTime.UtcNow.ToString("o")
+                        };
+                        if (!BackupStore.TryWriteManifest(info.Path, manifest))
+                        {
+                            // Never leave a stale manifest that points at a previous build's
+                            // backup; the backup itself is still usable via the legacy path.
+                            BackupStore.DeleteManifest(info.Path);
+                            Emit(LogLevel.Warn, "无法写入还原清单（.pclfix.json），但文件修复结果不受影响。");
+                        }
+                    }
 
                     Emit(LogLevel.Success, result.Message);
                     Emit(LogLevel.Info, "输出文件：" + output);
@@ -284,9 +407,12 @@ namespace PCLDownloadFix
             Emit(LogLevel.Info, "当前状态：" + info.StateText);
             Emit(LogLevel.Info, "备份位置：" + info.BackupPath);
 
-            if (info.State == PatchState.Original)
+            if (info.State == PatchState.Original || info.State == PatchState.Unrestricted)
             {
-                Emit(LogLevel.Success, "当前已经是原版，无需还原。");
+                var message = info.State == PatchState.Unrestricted
+                    ? "当前文件已具备完整下载功能，无需还原。"
+                    : "当前已经是原版，无需还原。";
+                Emit(LogLevel.Success, message);
                 return new PatchResult
                 {
                     Success = true,
@@ -295,16 +421,24 @@ namespace PCLDownloadFix
                     OutputPath = info.Path,
                     OriginalSha256 = info.Sha256,
                     PatchedSha256 = info.Sha256,
+                    Message = message,
                     Elapsed = stopwatch.Elapsed
                 };
             }
             if (info.State != PatchState.Patched && info.State != PatchState.Partial)
-                throw new PatchException("此文件不是本工具支持的可还原状态：" + info.StateText);
+                throw new UnsupportedTargetException("此文件不是本工具支持的可还原状态：" + info.StateText);
 
             if (!info.BackupExists)
                 throw new PatchException("找不到原版备份：" + info.BackupPath + "\r\n请使用修复前创建备份的同一文件，或重新获取原版 PCL。");
             if (!info.BackupIsValidOriginal)
                 throw new PatchException("备份文件不是有效的原版 PCL，无法安全还原：" + info.BackupPath);
+            if (!string.IsNullOrEmpty(info.BackupAssemblyVersion) &&
+                !string.IsNullOrEmpty(info.AssemblyVersion) &&
+                !string.Equals(info.BackupAssemblyVersion, info.AssemblyVersion, StringComparison.Ordinal))
+            {
+                throw new PatchException("备份版本（" + info.BackupAssemblyVersion + "）与目标版本（" +
+                    info.AssemblyVersion + "）不一致，拒绝还原。\r\n备份：" + info.BackupPath);
+            }
             if (PclProcess.IsRunning(info.Path))
                 throw new PatchException("PCL 正在运行，请先完全关闭启动器后再还原。");
 
@@ -324,43 +458,58 @@ namespace PCLDownloadFix
                 };
             }
 
-            PclProcess.EnsureNotRunning(info.Path);
-            var tempFile = Path.Combine(Path.GetDirectoryName(info.Path),
-                "." + Path.GetFileName(info.Path) + "." + Guid.NewGuid().ToString("N") + ".restore.tmp");
-            try
+            using (TargetLock.Acquire(info.Path, WriteLockTimeout))
             {
-                File.Copy(info.BackupPath, tempFile, true);
-                var tempHash = HashUtil.Sha256File(tempFile);
-                if (!string.Equals(tempHash, info.BackupSha256, StringComparison.OrdinalIgnoreCase))
-                    throw new PatchException("复制备份时校验失败，未替换文件。");
-
-                Emit(LogLevel.Step, "还原原版（原子替换）...");
-                ReplaceFile(tempFile, info.Path);
-                tempFile = null;
-
-                var finalHash = HashUtil.Sha256File(info.Path);
-                Emit(LogLevel.Success, "已还原为原版 PCL。");
-                Emit(LogLevel.Info, "SHA-256：" + finalHash);
-                Emit(LogLevel.Info, "用时：" + stopwatch.Elapsed.TotalSeconds.ToString("0.00") + " 秒");
-                return new PatchResult
+                PclProcess.EnsureNotRunning(info.Path);
+                var tempFile = Path.Combine(Path.GetDirectoryName(info.Path),
+                    "." + Path.GetFileName(info.Path) + "." + Guid.NewGuid().ToString("N") + ".restore.tmp");
+                try
                 {
-                    Success = true,
-                    TargetPath = info.Path,
-                    OutputPath = info.Path,
-                    BackupPath = info.BackupPath,
-                    OriginalSha256 = info.BackupSha256,
-                    PatchedSha256 = finalHash,
-                    Elapsed = stopwatch.Elapsed,
-                    Message = "已还原为原版。"
-                };
-            }
-            finally
-            {
-                if (tempFile != null && File.Exists(tempFile))
+                    File.Copy(info.BackupPath, tempFile, true);
+                    var tempHash = HashUtil.Sha256File(tempFile);
+                    if (!string.Equals(tempHash, info.BackupSha256, StringComparison.OrdinalIgnoreCase))
+                        throw new PatchException("复制备份时校验失败，未替换文件。");
+
+                    Emit(LogLevel.Step, "还原原版（原子替换）...");
+                    FileOps.Replace(tempFile, info.Path);
+                    tempFile = null;
+                }
+                finally
                 {
-                    try { File.Delete(tempFile); } catch { }
+                    if (tempFile != null && File.Exists(tempFile))
+                    {
+                        try { File.Delete(tempFile); } catch { }
+                    }
                 }
             }
+
+            var finalHash = HashUtil.Sha256File(info.Path);
+            if (!string.Equals(finalHash, info.BackupSha256, StringComparison.OrdinalIgnoreCase))
+                throw new PatchException("还原后文件哈希与备份不一致，请立即检查：" + info.Path);
+
+            using (var restored = PclTarget.Load(info.Path))
+            {
+                string detail;
+                var state = restored.GetState(out detail);
+                if (state != PatchState.Original && state != PatchState.Unrestricted)
+                    throw new PatchException("还原后的文件未通过原版校验：" + detail);
+            }
+
+            BackupStore.DeleteManifest(info.Path);
+            Emit(LogLevel.Success, "已还原为原版 PCL。");
+            Emit(LogLevel.Info, "SHA-256：" + finalHash);
+            Emit(LogLevel.Info, "用时：" + stopwatch.Elapsed.TotalSeconds.ToString("0.00") + " 秒");
+            return new PatchResult
+            {
+                Success = true,
+                TargetPath = info.Path,
+                OutputPath = info.Path,
+                BackupPath = info.BackupPath,
+                OriginalSha256 = info.BackupSha256,
+                PatchedSha256 = finalHash,
+                Elapsed = stopwatch.Elapsed,
+                Message = "已还原为原版。"
+            };
         }
 
         private void ValidateDiff(PclTarget target, SemanticDiff diff)
@@ -386,7 +535,7 @@ namespace PCLDownloadFix
         {
             string detail;
             var state = target.GetState(out detail);
-            if (state != PatchState.Patched)
+            if (state != PatchState.Patched && state != PatchState.Unrestricted)
                 throw new PatchException("修复后的状态校验失败：" + detail);
 
             var loader = target.FindMethod(RestoreSpecs.All[2]);
@@ -409,64 +558,6 @@ namespace PCLDownloadFix
             Emit(LogLevel.Success, "五项下载方法均已恢复，限制代码已清除。");
         }
 
-        private void EnsureBackup(string targetPath, string expectedHash)
-        {
-            var backup = targetPath + ".pcl-original.bak";
-            if (File.Exists(backup))
-            {
-                var backupHash = HashUtil.Sha256File(backup);
-                if (!string.Equals(backupHash, expectedHash, StringComparison.OrdinalIgnoreCase))
-                    throw new PatchException("备份文件已存在，但与当前目标文件不一致，未覆盖任何文件：\r\n" + backup);
-                Emit(LogLevel.Info, "原版备份已存在：" + backup);
-                return;
-            }
-
-            Emit(LogLevel.Step, "创建原版备份...");
-            var tempBackup = backup + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                File.Copy(targetPath, tempBackup, true);
-                var hash = HashUtil.Sha256File(tempBackup);
-                if (!string.Equals(hash, expectedHash, StringComparison.OrdinalIgnoreCase))
-                    throw new PatchException("创建备份时校验失败，已中止操作。");
-                File.Move(tempBackup, backup);
-                Emit(LogLevel.Success, "原版备份：" + backup);
-            }
-            finally
-            {
-                if (File.Exists(tempBackup))
-                {
-                    try { File.Delete(tempBackup); } catch { }
-                }
-            }
-        }
-
-        private static void ReplaceFile(string source, string destination)
-        {
-            if (File.Exists(destination))
-            {
-                var attributes = File.GetAttributes(destination);
-                if ((attributes & FileAttributes.ReadOnly) != 0)
-                    File.SetAttributes(destination, attributes & ~FileAttributes.ReadOnly);
-
-                try
-                {
-                    File.Replace(source, destination, null, true);
-                    return;
-                }
-                catch (IOException)
-                {
-                    // Fall back to copy + delete below.
-                }
-                catch (PlatformNotSupportedException)
-                {
-                }
-            }
-
-            File.Copy(source, destination, true);
-            File.Delete(source);
-        }
-
         private static Stream OpenDonorStream()
         {
             return EmbeddedResources.OpenDonor();
@@ -476,21 +567,42 @@ namespace PCLDownloadFix
         {
             string label;
             if (KnownBuilds.TryGetValue(info.Sha256, out label)) return label;
-            if (info.State == PatchState.Patched) return "PCL 2.99.0.0（第三方修复版本）";
-            return "PCL 2.99.0.0（未知快照构建）";
+
+            var version = string.IsNullOrEmpty(info.AssemblyVersion) ? info.FileVersion : info.AssemblyVersion;
+            if (string.IsNullOrEmpty(version)) version = "未知版本";
+
+            if (info.State == PatchState.Patched)
+                return "PCL " + version + "（第三方修复版本）";
+            if (info.State == PatchState.Unrestricted)
+                return "PCL " + version + "（完整版本，无需修复）";
+            return "PCL " + version + "（未识别构建）";
         }
 
         private static void InspectBackup(PclTargetInfo info)
         {
-            if (!File.Exists(info.BackupPath)) return;
+            PatchManifest manifest;
+            var path = BackupStore.ResolveBackupPath(info.Path, info.Sha256, out manifest);
+            info.BackupPath = path ?? BackupStore.LegacyPath(info.Path);
+            if (path == null) return;
+
             info.BackupExists = true;
+            if (manifest != null && !string.IsNullOrEmpty(manifest.BackupFile))
+            {
+                var manifestPath = Path.Combine(Path.GetDirectoryName(info.Path) ?? "",
+                    Path.GetFileName(manifest.BackupFile));
+                info.BackupFromManifest = string.Equals(Path.GetFullPath(path), Path.GetFullPath(manifestPath),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
             try
             {
-                info.BackupSha256 = HashUtil.Sha256File(info.BackupPath);
-                using (var backup = PclTarget.Load(info.BackupPath))
+                info.BackupSha256 = HashUtil.Sha256File(path);
+                using (var backup = PclTarget.Load(path))
                 {
                     string detail;
-                    info.BackupIsValidOriginal = backup.GetState(out detail) == PatchState.Original;
+                    var state = backup.GetState(out detail);
+                    info.BackupIsValidOriginal = state == PatchState.Original || state == PatchState.Unrestricted;
+                    info.BackupAssemblyVersion = backup.AssemblyVersion;
                 }
             }
             catch
@@ -512,4 +624,3 @@ namespace PCLDownloadFix
         }
     }
 }
-

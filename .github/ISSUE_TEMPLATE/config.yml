@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/Ethernos-Studio/PCLDownloadFix/security/advisories/new
+    about: 请私下报告，不要在公开 Issue 中披露可利用细节
+  - name: 使用问题 / 讨论
+    url: https://github.com/Ethernos-Studio/PCLDownloadFix/discussions
+    about: 安装、杀软误报、PCL 更新等非缺陷问题

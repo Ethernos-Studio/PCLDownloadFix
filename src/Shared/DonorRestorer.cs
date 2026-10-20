@@ -39,14 +39,15 @@ namespace PCLDownloadFix
             var donorType = _donor.MainModule.GetType("PCLDownloadRestore.RestoreMethods");
             if (donorType == null)
                 throw new PatchException("恢复模板损坏：找不到 RestoreMethods。");
-            if (donorType.Methods.Count < RestoreSpecs.All.Length)
-                throw new PatchException("恢复模板不完整：应有 " + RestoreSpecs.All.Length + " 个方法，实际只有 " + donorType.Methods.Count + " 个。");
+            if (donorType.Methods.Count != RestoreSpecs.All.Length)
+                throw new PatchException("恢复模板不完整：应有 " + RestoreSpecs.All.Length + " 个方法，实际有 " + donorType.Methods.Count + " 个。");
 
             var restored = new List<string>();
             for (var i = 0; i < RestoreSpecs.All.Length; i++)
             {
                 var spec = RestoreSpecs.All[i];
                 var donorMethod = donorType.Methods[i];
+                ValidateDonorMethod(donorMethod, spec, i);
                 var targetMethod = _target.FindMethod(spec);
 
                 Log.Write(log, LogLevel.Info, "恢复 " + spec.MethodName + "（" + donorMethod.Body.CodeSize + " 字节 IL）");
@@ -54,6 +55,33 @@ namespace PCLDownloadFix
                 restored.Add(targetMethod.FullName);
             }
             return restored;
+        }
+
+        private static void ValidateDonorMethod(MethodDefinition method, MethodSpec spec, int index)
+        {
+            if (method == null || !method.HasBody)
+                throw new PatchException("恢复模板损坏：第 " + (index + 1) + " 个方法没有方法体。");
+            if (!method.IsStatic)
+                throw new PatchException("恢复模板损坏：第 " + (index + 1) + " 个方法不是静态方法。");
+
+            // Donor methods are static. Instance methods on the original build carry the
+            // receiver as an extra first parameter; static methods do not.
+            var hasReceiver = method.Parameters.Count == spec.ParameterTypes.Length + 1;
+            if (method.Parameters.Count != spec.ParameterTypes.Length && !hasReceiver)
+                throw new PatchException("恢复模板与目标方法不匹配：第 " + (index + 1) + " 个方法参数数量不一致。");
+
+            var offset = hasReceiver ? 1 : 0;
+            if (hasReceiver &&
+                !string.Equals(method.Parameters[0].ParameterType.FullName, spec.TypeName, StringComparison.Ordinal))
+            {
+                throw new PatchException("恢复模板与目标方法不匹配：第 " + (index + 1) + " 个方法的所属类型不是 " + spec.TypeName + "。");
+            }
+
+            for (var i = 0; i < spec.ParameterTypes.Length; i++)
+            {
+                if (!string.Equals(method.Parameters[i + offset].ParameterType.FullName, spec.ParameterTypes[i], StringComparison.Ordinal))
+                    throw new PatchException("恢复模板与目标方法不匹配：" + spec + " 的第 " + (i + 1) + " 个参数类型不一致。");
+            }
         }
 
         private void CopyBody(MethodDefinition donorMethod, MethodDefinition targetMethod)

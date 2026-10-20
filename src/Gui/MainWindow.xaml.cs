@@ -32,6 +32,8 @@ namespace PCLDownloadFix.Gui
         {
             InitializeComponent();
             _initialPath = initialPath;
+            VersionBadge.Text = "v" + DisclaimerText.ProductVersion;
+            AboutVersion.Text = "PCL 下载修复器（第三方） v" + DisclaimerText.ProductVersion;
             LogList.ItemsSource = _logs;
             _patcher = new Patcher(OnPatchLog);
             ClearInfo();
@@ -126,7 +128,7 @@ namespace PCLDownloadFix.Gui
 
             var confirmation = "即将修改：\r\n" + _info.Path + "\r\n\r\n" +
                                (_info.BackupExists && _info.BackupIsValidOriginal
-                                   ? "原版备份已经存在，将保留该备份。"
+                                   ? "原版备份已经存在；如果 PCL 已更新，旧备份会自动归档，不会阻止本次修复。"
                                    : "工具会先创建原版备份（.pcl-original.bak）。") +
                                "\r\n修改后可用“还原原版”恢复。\r\n\r\n是否继续？";
             if (MessageBox.Show(this, confirmation, "确认应用下载修复",
@@ -219,6 +221,62 @@ namespace PCLDownloadFix.Gui
                 AddLog(new LogEntry(LogLevel.Error, message));
                 SetStatus("还原失败");
                 MessageBox.Show(this, message, "还原失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _stopwatch.Stop();
+                ElapsedText.Text = "用时 " + _stopwatch.Elapsed.TotalSeconds.ToString("0.0") + " 秒";
+                SetBusy(false);
+            }
+        }
+
+        private async void UpdateToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (_busy || _info == null) return;
+
+            var disable = !_info.AutoUpdateDisabled;
+            var setupPath = string.IsNullOrEmpty(_info.SetupIniPath) ? "PCL\\Setup.ini" : _info.SetupIniPath;
+            var confirmation = disable
+                ? "即将修改 PCL 的配置文件（不会修改 EXE）：\r\n" + setupPath + "\r\n\r\n" +
+                  "请先完全关闭 PCL。\r\n\r\n" +
+                  "写入：SystemSystemUpdate:3\r\n\r\n" +
+                  "效果：PCL 不再自动检查/下载更新，停留在当前版本。\r\n" +
+                  (_info.IsPreRestriction
+                      ? "当前是 2.99 之前的版本，关闭更新可以继续保持现有的下载功能。\r\n"
+                      : "") +
+                  "\r\n注意：关闭更新后会错过 PCL 官方修复与安全更新；可以随时点击“恢复 PCL 自动更新”。\r\n\r\n是否继续？"
+                : "即将恢复 PCL 的自动更新设置：\r\n" + setupPath + "\r\n\r\n" +
+                  "恢复后 PCL 可能自动更新到 2.99 或更高版本；若新版本限制下载，需要重新运行本工具修复。\r\n\r\n是否继续？";
+
+            if (MessageBox.Show(this, confirmation, disable ? "确认关闭自动更新" : "确认恢复自动更新",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            SetBusy(true, disable ? "正在关闭 PCL 自动更新..." : "正在恢复 PCL 自动更新...");
+            _stopwatch.Restart();
+            try
+            {
+                var path = _info.Path;
+                var result = await Task.Run(() => disable
+                    ? _patcher.DisableAutoUpdate(path)
+                    : _patcher.EnableAutoUpdate(path));
+
+                AddLog(new LogEntry(result.Changed ? LogLevel.Success : LogLevel.Info, result.Message));
+                await RefreshInfoAsync(path);
+                SetStatus(result.Message);
+
+                MessageBox.Show(this,
+                    result.Message + "\r\n\r\n设置文件：\r\n" + result.SetupIniPath +
+                    (string.IsNullOrEmpty(result.BackupPath) ? "" : "\r\n\r\n设置备份：\r\n" + result.BackupPath),
+                    disable ? "已关闭自动更新" : "已恢复自动更新",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                var message = ex is PatchException ? ex.Message : "修改 PCL 自动更新设置失败：" + ex.Message;
+                AddLog(new LogEntry(LogLevel.Error, message));
+                SetStatus("自动更新设置失败");
+                MessageBox.Show(this, message, "设置失败", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -389,6 +447,7 @@ namespace PCLDownloadFix.Gui
             SizeValue.Text = HashUtil.FormatSize(info.Size);
             HashValue.Text = info.Sha256;
             BackupValue.Text = info.BackupText;
+            AutoUpdateValue.Text = info.AutoUpdateText;
             StateDetail.Text = info.Message;
             BackupCheck.IsEnabled = !info.BackupExists;
             if (info.BackupExists) BackupCheck.IsChecked = true;
@@ -407,18 +466,38 @@ namespace PCLDownloadFix.Gui
                 case PatchState.Partial:
                     SetBadge("部分修复", Color.FromRgb(0xFF, 0xED, 0xD5), Color.FromRgb(0x9A, 0x34, 0x12));
                     break;
+                case PatchState.Unrestricted:
+                    SetBadge("无需修复", Color.FromRgb(0xDC, 0xFC, 0xE7), Color.FromRgb(0x16, 0x65, 0x34));
+                    break;
                 default:
                     SetBadge("不支持", Color.FromRgb(0xFE, 0xE2, 0xE2), Color.FromRgb(0x99, 0x1B, 0x1B));
                     break;
             }
 
-            ApplyButton.Content = info.State == PatchState.Patched
+            ApplyButton.Content = info.State == PatchState.Patched || info.State == PatchState.Unrestricted
                 ? (info.NoFixNeeded ? "无需修复" : "已修复")
                 : "一键修复";
             ApplyButton.IsEnabled = !_busy && (info.State == PatchState.Original || info.State == PatchState.Partial);
             RestoreButton.IsEnabled = !_busy && info.State == PatchState.Patched && info.BackupIsValidOriginal;
             VerifyButton.IsEnabled = !_busy;
             OpenFolderButton.IsEnabled = !_busy;
+
+            UpdateToggleButton.Content = info.AutoUpdateDisabled ? "恢复 PCL 自动更新" : "关闭 PCL 自动更新";
+            UpdateToggleButton.IsEnabled = !_busy && info.IsSupported;
+            UpdateHint.Text = BuildUpdateHint(info);
+        }
+
+        private static string BuildUpdateHint(PclTargetInfo info)
+        {
+            if (!string.IsNullOrEmpty(info.AutoUpdateError))
+                return "无法读取 PCL 设置：" + info.AutoUpdateError;
+            if (info.AutoUpdateDisabled)
+                return "自动更新已关闭，PCL 会停留在当前版本；可随时恢复。";
+            if (info.IsPreRestriction)
+                return "当前是 2.99 之前的版本。关闭自动更新可保留现有下载功能。";
+            if (info.State == PatchState.Patched)
+                return "关闭后可防止已修复版本被自动更新覆盖，但会错过官方修复。";
+            return "只修改 PCL\\Setup.ini，不修改 EXE；可在需要时恢复。";
         }
 
         private void ClearInfo()
@@ -427,6 +506,7 @@ namespace PCLDownloadFix.Gui
             SizeValue.Text = "—";
             HashValue.Text = "—";
             BackupValue.Text = "—";
+            AutoUpdateValue.Text = "—";
             StateDetail.Text = "";
             SetBadge("等待选择", Color.FromRgb(0xF1, 0xF5, 0xF9), Color.FromRgb(0x47, 0x55, 0x69));
             ApplyButton.IsEnabled = false;
@@ -434,6 +514,9 @@ namespace PCLDownloadFix.Gui
             RestoreButton.IsEnabled = false;
             VerifyButton.IsEnabled = false;
             OpenFolderButton.IsEnabled = false;
+            UpdateToggleButton.Content = "关闭 PCL 自动更新";
+            UpdateToggleButton.IsEnabled = false;
+            UpdateHint.Text = "仅修改 PCL\\Setup.ini，不修改 EXE。";
         }
 
         private void SetBadge(string text, Color background, Color foreground)
@@ -456,11 +539,13 @@ namespace PCLDownloadFix.Gui
             {
                 ApplyButton.IsEnabled = !busy && (_info.State == PatchState.Original || _info.State == PatchState.Partial);
                 RestoreButton.IsEnabled = !busy && _info.State == PatchState.Patched && _info.BackupIsValidOriginal;
+                UpdateToggleButton.IsEnabled = !busy && _info.IsSupported;
             }
             else
             {
                 ApplyButton.IsEnabled = false;
                 RestoreButton.IsEnabled = false;
+                UpdateToggleButton.IsEnabled = false;
             }
             VerifyButton.IsEnabled = !busy && _info != null;
             OpenFolderButton.IsEnabled = !busy && _info != null;

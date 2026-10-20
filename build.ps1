@@ -1,12 +1,17 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = "Release",
-    [switch]$NoZip
+    [switch]$NoZip,
+    [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = "1.0.0"
+$propsPath = Join-Path $root "Directory.Build.props"
+if (!(Test-Path $propsPath)) { throw "找不到 Directory.Build.props" }
+[xml]$buildProps = Get-Content $propsPath -Raw
+$version = @($buildProps.Project.PropertyGroup.Version) | Where-Object { $_ } | Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($version)) { throw "Directory.Build.props 中没有 Version" }
 $distRoot = Join-Path $root "dist"
 $packageName = "PCL下载修复器-第三方-v$version"
 $packageDir = Join-Path $distRoot $packageName
@@ -14,6 +19,13 @@ $packageDir = Join-Path $distRoot $packageName
 Write-Host "==> 构建 PCLDownloadFix $version · Ethernos Studio" -ForegroundColor Cyan
 dotnet build (Join-Path $root "PCLDownloadFix.sln") -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败" }
+
+if (!$SkipTests) {
+    Write-Host "==> 运行测试" -ForegroundColor Cyan
+    dotnet test (Join-Path $root "tests\PCLDownloadFix.Tests\PCLDownloadFix.Tests.csproj") `
+        -c $Configuration --no-build --nologo
+    if ($LASTEXITCODE -ne 0) { throw "测试失败" }
+}
 
 $gui = Join-Path $root "src\Gui\bin\$Configuration\net48\PCLDownloadFix.Gui.exe"
 $cli = Join-Path $root "src\Cli\bin\$Configuration\net48\PCLDownloadFix.Console.exe"
@@ -28,14 +40,19 @@ New-Item -ItemType Directory -Path (Join-Path $packageDir "docs") -Force | Out-N
 Copy-Item $gui (Join-Path $packageDir "PCL下载修复器.exe") -Force
 Copy-Item $cli (Join-Path $packageDir "PCL下载修复器-控制台.exe") -Force
 Copy-Item (Join-Path $root "README.md") $packageDir -Force
+Copy-Item (Join-Path $root "CHANGELOG.md") $packageDir -Force
 Copy-Item (Join-Path $root "LICENSE") $packageDir -Force
 Copy-Item (Join-Path $root "THIRD-PARTY-NOTICES.txt") $packageDir -Force
+foreach ($extra in @("CONTRIBUTING.md", "SECURITY.md")) {
+    $path = Join-Path $root $extra
+    if (Test-Path $path) { Copy-Item $path $packageDir -Force }
+}
 
 $docsDir = Join-Path $root "docs"
 if (Test-Path $docsDir) {
-    Get-ChildItem $docsDir -Filter *.png | ForEach-Object {
-        Copy-Item $_.FullName (Join-Path $packageDir "docs\$($_.Name)") -Force
-    }
+    $targetDocs = Join-Path $packageDir "docs"
+    New-Item -ItemType Directory -Path $targetDocs -Force | Out-Null
+    Copy-Item (Join-Path $docsDir "*") $targetDocs -Recurse -Force
 }
 
 Write-Host "==> 附带源代码" -ForegroundColor Cyan
@@ -47,6 +64,10 @@ Copy-Item (Join-Path $root "tools\DonorBuilder") (Join-Path $sourceDir "tools") 
 Copy-Item (Join-Path $root "tools\MethodDiff") (Join-Path $sourceDir "tools") -Recurse -Force
 Copy-Item (Join-Path $root "resources") $sourceDir -Recurse -Force
 Copy-Item (Join-Path $root "third_party") $sourceDir -Recurse -Force
+if (Test-Path (Join-Path $root "tests")) {
+    Copy-Item (Join-Path $root "tests") $sourceDir -Recurse -Force
+}
+Copy-Item (Join-Path $root "Directory.Build.props") $sourceDir -Force
 Copy-Item (Join-Path $root "PCLDownloadFix.sln") $sourceDir -Force
 Copy-Item (Join-Path $root "build.ps1") $sourceDir -Force
 Get-ChildItem $sourceDir -Recurse -Directory | Where-Object { $_.Name -in @("bin", "obj") } | Remove-Item -Recurse -Force

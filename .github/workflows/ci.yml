@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore
+        run: dotnet restore PCLDownloadFix.sln
+
+      - name: Build
+        run: dotnet build PCLDownloadFix.sln -c Release --no-restore --nologo
+
+      - name: Test
+        run: dotnet test tests\PCLDownloadFix.Tests\PCLDownloadFix.Tests.csproj -c Release --no-build --nologo
+
+      - name: CLI contract smoke test
+        shell: pwsh
+        run: .\tests\cli-smoke.ps1
+
+      - name: Package
+        shell: pwsh
+        run: .\build.ps1 -NoZip -SkipTests
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCLDownloadFix-ci
+          path: dist/**
+          if-no-files-found: error

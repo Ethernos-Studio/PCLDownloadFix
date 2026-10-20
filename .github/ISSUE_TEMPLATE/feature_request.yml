@@ -1,0 +1,39 @@
+name: 功能建议
+description: 新构建支持、自动化集成、界面改进
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先查看 `docs/ROADMAP.md`，避免与已有计划重复。
+        涉及新 PCL 构建时，请附上版本、SHA-256 与 `verify --json` 输出；**不要上传 EXE**。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的问题
+      description: 描述使用场景，而不是直接给实现方案
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的方案
+    validations:
+      required: false
+
+  - type: input
+    id: pcl-build
+    attributes:
+      label: 相关 PCL 构建（可选）
+      placeholder: "2.99.0.0 快照 415 / SHA-256 ..."
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 范围确认
+      options:
+        - label: 该建议不涉及伪造服务器响应、绕过账号/付费或注入 PCL 进程
+          required: true

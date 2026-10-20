@@ -175,9 +175,10 @@ namespace PCLDownloadFix
             var loader = TryFindMethod(RestoreSpecs.All[2]);
             var modpack = TryFindMethod(RestoreSpecs.All[0]);
             var modpackFile = TryFindMethod(RestoreSpecs.All[1]);
+            var modify = TryFindMethod(RestoreSpecs.All[3]);
             var resourceDetail = TryFindMethod(RestoreSpecs.All[4]);
 
-            if (loader == null || modpack == null || modpackFile == null || resourceDetail == null)
+            if (loader == null || modpack == null || modpackFile == null || modify == null || resourceDetail == null)
             {
                 detail = "缺少下载相关方法，可能不是 PCL 2.99 系列。";
                 return PatchState.Unsupported;
@@ -187,16 +188,19 @@ namespace PCLDownloadFix
             var modpackRestored = ReferencesMethod(modpack, "SelectFile");
             var resourceRestored = ReferencesMethod(resourceDetail, "Install_Click") ||
                                    ReferencesMethod(resourceDetail, "_Lambda$__R18-5");
-            var guard = HasGuard(modpack) || HasGuard(modpackFile) || HasGuard(loader);
+            var guard = HasGuard(modpack) || HasGuard(modpackFile) || HasGuard(loader) ||
+                        HasGuard(modify) || HasGuard(resourceDetail);
 
-            if (loaderRestored && modpackRestored && resourceRestored)
+            if (loaderRestored && modpackRestored && resourceRestored && !guard)
             {
                 detail = "下载方法完整可用。";
-                return PatchState.Patched;
+                return PatchState.Unrestricted;
             }
             if (loaderRestored || modpackRestored || resourceRestored)
             {
-                detail = "只有部分下载方法被修改，可重新应用完整修复。";
+                detail = guard
+                    ? "只有部分下载方法被修改，且仍检测到下载限制代码，可重新应用完整修复。"
+                    : "只有部分下载方法被修改，可重新应用完整修复。";
                 return PatchState.Partial;
             }
             if (guard)
@@ -205,7 +209,7 @@ namespace PCLDownloadFix
                 return PatchState.Original;
             }
 
-            detail = "未找到 2.99 的下载限制代码，此构建可能已移除限制或结构不同。";
+            detail = "未找到已知的下载限制代码，此构建可能已移除限制或结构不同。";
             return PatchState.Unsupported;
         }
 
@@ -250,6 +254,8 @@ namespace PCLDownloadFix
                 Assembly.Dispose();
                 Assembly = null;
             }
+            if (_resolver != null)
+                _resolver.Dispose();
         }
     }
 }

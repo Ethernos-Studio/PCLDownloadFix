@@ -48,6 +48,8 @@ namespace PCLDownloadFix
         Original,
         Patched,
         Partial,
+        /// <summary>The five methods are intact and no download restriction is present.</summary>
+        Unrestricted,
         Unsupported,
         Error
     }
@@ -70,6 +72,7 @@ namespace PCLDownloadFix
                 {
                     case PatchState.Original: return "原版（下载功能受限）";
                     case PatchState.Patched: return NoFixNeeded ? "限制前版本（无需修复）" : "已修复";
+                    case PatchState.Unrestricted: return "已具备下载功能（无需修复）";
                     case PatchState.Partial: return "部分修复";
                     case PatchState.Unsupported: return "不支持或无法识别";
                     case PatchState.Error: return "读取失败";
@@ -83,6 +86,19 @@ namespace PCLDownloadFix
         public bool BackupExists { get; set; }
         public bool BackupIsValidOriginal { get; set; }
         public string BackupSha256 { get; set; }
+        public string BackupAssemblyVersion { get; set; }
+        public bool BackupFromManifest { get; set; }
+        public bool IsPreRestriction { get; set; }
+        public string SetupIniPath { get; set; }
+        public AutoUpdateState AutoUpdateState { get; set; }
+        public int? AutoUpdateValue { get; set; }
+        public string AutoUpdateText { get; set; }
+        public string AutoUpdateError { get; set; }
+
+        public bool AutoUpdateDisabled
+        {
+            get { return AutoUpdateState == PCLDownloadFix.AutoUpdateState.Disabled; }
+        }
 
         public string BackupText
         {

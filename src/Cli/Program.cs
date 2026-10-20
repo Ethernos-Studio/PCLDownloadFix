@@ -28,13 +28,26 @@ namespace PCLDownloadFix.Cli
     internal static class Cli
     {
         private const string Product = "PCL 下载修复器（第三方）";
-        private const string Version = "1.0.0";
         private const string Author = "Ethernos Studio";
+        private const int SchemaVersion = 1;
         private static readonly object ConsoleLock = new object();
+
+        private static TextWriter _stdout = Console.Out;
+        private static bool _json;
+        private static string _command = "";
 
         public static int Run(string[] args)
         {
-            Console.Title = Product + " · 控制台版 v" + Version + " · " + Author;
+            _stdout = Console.Out;
+            _json = args != null && args.Any(IsJsonFlag);
+            if (_json)
+            {
+                // Keep stdout reserved for exactly one JSON document. Every human-facing
+                // line (banner, progress, disclaimer) is still available on stderr.
+                Console.SetOut(Console.Error);
+            }
+
+            Console.Title = Product + " · 控制台版 v" + DisclaimerText.ProductVersion + " · " + Author;
             if (args == null || args.Length == 0)
             {
                 PrintBanner();
@@ -43,10 +56,10 @@ namespace PCLDownloadFix.Cli
                 return 0;
             }
 
-            var command = args[0].Trim().ToLowerInvariant();
+            _command = args[0].Trim().ToLowerInvariant();
             try
             {
-                switch (command)
+                switch (_command)
                 {
                     case "help":
                     case "-h":
@@ -57,7 +70,7 @@ namespace PCLDownloadFix.Cli
                         return 0;
                     case "version":
                     case "--version":
-                        Console.WriteLine(Product + " v" + Version + " · " + Author);
+                        Console.WriteLine(Product + " v" + DisclaimerText.ProductVersion + " · " + Author);
                         return 0;
                     case "gui":
                         // The GUI shows the full disclaimer before its main window.
@@ -69,23 +82,35 @@ namespace PCLDownloadFix.Cli
                         return SelfCheckCommand(args);
                 }
 
-                if (command == "patch" || command == "apply" || command == "fix")
+                if (_command == "patch" || _command == "apply" || _command == "fix")
                 {
                     PrintBanner();
                     if (!EnsureDisclaimer(args)) return 3;
                     return Patch(args);
                 }
-                if (command == "restore" || command == "revert")
+                if (_command == "restore" || _command == "revert")
                 {
                     PrintBanner();
                     if (!EnsureDisclaimer(args)) return 3;
                     return Restore(args);
                 }
-                if (command == "verify" || command == "check" || command == "info")
+                if (_command == "disable-update" || _command == "update-off")
                 {
                     PrintBanner();
                     if (!EnsureDisclaimer(args)) return 3;
-                    return Verify(args, command == "info");
+                    return ChangeAutoUpdate(args, true);
+                }
+                if (_command == "enable-update" || _command == "update-on")
+                {
+                    PrintBanner();
+                    if (!EnsureDisclaimer(args)) return 3;
+                    return ChangeAutoUpdate(args, false);
+                }
+                if (_command == "verify" || _command == "check" || _command == "info")
+                {
+                    PrintBanner();
+                    if (!EnsureDisclaimer(args)) return 3;
+                    return Verify(args, _command == "info");
                 }
 
                 if (File.Exists(args[0]))
@@ -96,24 +121,46 @@ namespace PCLDownloadFix.Cli
                 }
 
                 PrintBanner();
-                Error("未知命令：" + args[0]);
-                PrintHelp();
-                return 1;
+                return Fail("未知命令：" + args[0], 1);
+            }
+            catch (UnsupportedTargetException ex)
+            {
+                return Fail(ex.Message, 2);
             }
             catch (PatchException ex)
             {
-                Error(ex.Message);
-                return 1;
+                return Fail(ex.Message, 1);
             }
             catch (Exception ex)
             {
-                Error("发生未预期的错误：" + ex.Message);
-                return 1;
+                return Fail("发生未预期的错误：" + ex.Message, 1);
             }
+            finally
+            {
+                try { Console.Out.Flush(); } catch { }
+                try { _stdout.Flush(); } catch { }
+            }
+        }
+
+        private static int Fail(string message, int exitCode)
+        {
+            if (_json)
+                WriteJson(ErrorJson(_command, message, exitCode));
+            else
+                Error(message);
+            return exitCode;
         }
 
         private static bool EnsureDisclaimer(string[] args)
         {
+            if (_json)
+            {
+                if (args.Any(IsDisclaimerAccepted)) return true;
+                WriteJson(ErrorJson(_command,
+                    "JSON 模式为非交互模式，必须追加 --yes 才能确认免责声明并继续。", 3));
+                return false;
+            }
+
             if (args.Any(IsDisclaimerAccepted))
             {
                 Console.WriteLine("免责声明：已通过 --yes 确认。");
@@ -149,6 +196,11 @@ namespace PCLDownloadFix.Cli
                    string.Equals(argument, "--accept-disclaimer", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool IsJsonFlag(string argument)
+        {
+            return string.Equals(argument, "--json", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static void PrintDisclaimer()
         {
             Header("免责声明");
@@ -168,16 +220,9 @@ namespace PCLDownloadFix.Cli
         private static int SelfCheckCommand(string[] args)
         {
             var result = SelfCheck.Run();
-            if (args.Any(a => string.Equals(a, "--json", StringComparison.OrdinalIgnoreCase)))
+            if (_json)
             {
-                Console.WriteLine("{");
-                Console.WriteLine("  \"path\": \"" + JsonEscape(result.ExePath) + "\",");
-                Console.WriteLine("  \"size\": " + result.Size.ToString(CultureInfo.InvariantCulture) + ",");
-                Console.WriteLine("  \"sha256\": \"" + result.ExeSha256 + "\",");
-                Console.WriteLine("  \"donorOk\": " + (result.DonorOk ? "true" : "false") + ",");
-                Console.WriteLine("  \"cecilOk\": " + (result.CecilOk ? "true" : "false") + ",");
-                Console.WriteLine("  \"projectUrl\": \"" + JsonEscape(result.ProjectUrl) + "\"");
-                Console.WriteLine("}");
+                WriteJson(SelfCheckJson(result));
                 return result.AllEmbeddedOk ? 0 : 1;
             }
 
@@ -199,7 +244,7 @@ namespace PCLDownloadFix.Cli
 
         private static int Patch(string[] args)
         {
-            var options = ParseOptions(args, out var path, out var pause, out var json);
+            var options = ParseOptions(args, out var path, out var pause, out _);
             if (path == null) path = FindPcl();
             if (path == null)
                 throw new PatchException("未找到 PCL。请把本工具放到 PCL 同目录，或执行：\r\n  PCLDownloadFix.Console.exe patch \"D:\\PCL\\Plain Craft Launcher 2.exe\"");
@@ -218,6 +263,12 @@ namespace PCLDownloadFix.Cli
             };
 
             var result = patcher.Apply(path, patchOptions);
+            if (_json)
+            {
+                WriteJson(PatchJson(result));
+                return 0;
+            }
+
             Console.WriteLine();
             if (result.AlreadyPatched)
             {
@@ -241,7 +292,7 @@ namespace PCLDownloadFix.Cli
 
         private static int Restore(string[] args)
         {
-            var options = ParseOptions(args, out var path, out var pause, out var json);
+            var options = ParseOptions(args, out var path, out var pause, out _);
             if (path == null) path = FindPcl();
             if (path == null) throw new PatchException("未找到 PCL，请指定要还原的 EXE 路径。");
 
@@ -251,6 +302,12 @@ namespace PCLDownloadFix.Cli
 
             var patcher = new Patcher(PrintLog);
             var result = patcher.Restore(path, options.DryRun);
+            if (_json)
+            {
+                WriteJson(RestoreJson(result));
+                return 0;
+            }
+
             Console.WriteLine();
             if (result.AlreadyOriginal)
                 Success("当前已经是原版，无需还原。");
@@ -262,18 +319,52 @@ namespace PCLDownloadFix.Cli
             return 0;
         }
 
+        private static int ChangeAutoUpdate(string[] args, bool disable)
+        {
+            var options = ParseOptions(args, out var path, out var pause, out _);
+            if (path == null) path = FindPcl();
+            if (path == null) throw new PatchException("未找到 PCL，请指定 Plain Craft Launcher 2.exe 的路径。");
+            if (options.DryRun)
+                throw new PatchException("disable-update/enable-update 不支持 --dry-run；请先关闭 PCL 并确认目标路径。");
+            if (!string.IsNullOrEmpty(options.Output))
+                throw new PatchException("disable-update/enable-update 不支持 --output。");
+
+            Header(disable ? "关闭 PCL 自动更新" : "恢复 PCL 自动更新");
+            Console.WriteLine("目标文件：" + Path.GetFullPath(path));
+            Console.WriteLine();
+
+            var patcher = new Patcher(PrintLog);
+            var result = disable ? patcher.DisableAutoUpdate(path) : patcher.EnableAutoUpdate(path);
+
+            if (_json)
+            {
+                WriteJson(AutoUpdateJson(result, disable));
+                return 0;
+            }
+
+            Console.WriteLine();
+            Success(result.Message);
+            Console.WriteLine("设置文件：" + result.SetupIniPath);
+            if (!string.IsNullOrEmpty(result.CurrentValue))
+                Console.WriteLine("SystemSystemUpdate：" + result.CurrentValue);
+            if (!string.IsNullOrEmpty(result.BackupPath))
+                Console.WriteLine("设置备份：" + result.BackupPath);
+            WaitIfRequested(pause);
+            return 0;
+        }
+
         private static int Verify(string[] args, bool infoOnly)
         {
-            var options = ParseOptions(args, out var path, out var pause, out var json);
+            var options = ParseOptions(args, out var path, out var pause, out _);
             if (path == null) path = FindPcl();
             if (path == null) throw new PatchException("未找到 PCL，请指定要检查的 EXE 路径。");
 
             var patcher = new Patcher(PrintLog);
             var info = patcher.Inspect(path);
 
-            if (json)
+            if (_json)
             {
-                PrintJson(info);
+                WriteJson(VerifyJson(info));
             }
             else
             {
@@ -287,12 +378,17 @@ namespace PCLDownloadFix.Cli
                 Console.WriteLine("SHA-256   : " + info.Sha256);
                 Console.WriteLine("原版备份  : " + info.BackupText);
                 if (info.BackupExists) Console.WriteLine("备份 SHA  : " + info.BackupSha256);
+                Console.WriteLine("自动更新  : " + info.AutoUpdateText +
+                    (string.IsNullOrEmpty(info.AutoUpdateError) ? "" : "（" + info.AutoUpdateError + "）"));
+                if (!string.IsNullOrEmpty(info.SetupIniPath)) Console.WriteLine("设置文件  : " + info.SetupIniPath);
                 Console.WriteLine();
 
                 if (info.State == PatchState.Patched)
                     Success(info.NoFixNeeded
                         ? "该版本是下载限制前的官方实现，已具备完整下载功能，无需修复。"
                         : "此文件已应用下载修复。");
+                else if (info.State == PatchState.Unrestricted)
+                    Success("该文件已具备完整下载功能，无需修复。");
                 else if (info.State == PatchState.Original)
                     Warning("此文件是受限原版，可执行 patch 命令应用修复。");
                 else if (info.State == PatchState.Partial)
@@ -302,7 +398,7 @@ namespace PCLDownloadFix.Cli
             }
 
             WaitIfRequested(pause);
-            return info.State == PatchState.Unsupported ? 2 : 0;
+            return info.State == PatchState.Unsupported || info.State == PatchState.Error ? 2 : 0;
         }
 
         private static int StartGui()
@@ -326,7 +422,7 @@ namespace PCLDownloadFix.Cli
             var options = new CliOptions();
             path = null;
             pause = args.Any(a => string.Equals(a, "--pause", StringComparison.OrdinalIgnoreCase));
-            json = args.Any(a => string.Equals(a, "--json", StringComparison.OrdinalIgnoreCase));
+            json = args.Any(IsJsonFlag);
 
             for (var i = 1; i < args.Length; i++)
             {
@@ -387,10 +483,16 @@ namespace PCLDownloadFix.Cli
             return null;
         }
 
-        private static void PrintJson(PclTargetInfo info)
+        private static string VerifyJson(PclTargetInfo info)
         {
+            var requiresPatch = info.State == PatchState.Original || info.State == PatchState.Partial;
+            var ok = info.State != PatchState.Unsupported && info.State != PatchState.Error;
             var builder = new StringBuilder();
             builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": " + Bool(ok) + ",");
+            builder.AppendLine("  \"exitCode\": " + (ok ? 0 : 2) + ",");
+            builder.AppendLine("  \"command\": \"" + (_command == "info" ? "info" : "verify") + "\",");
             builder.AppendLine("  \"path\": \"" + JsonEscape(info.Path) + "\",");
             builder.AppendLine("  \"size\": " + info.Size.ToString(CultureInfo.InvariantCulture) + ",");
             builder.AppendLine("  \"sha256\": \"" + info.Sha256 + "\",");
@@ -400,17 +502,167 @@ namespace PCLDownloadFix.Cli
             builder.AppendLine("  \"state\": \"" + info.State + "\",");
             builder.AppendLine("  \"stateText\": \"" + JsonEscape(info.StateText) + "\",");
             builder.AppendLine("  \"message\": \"" + JsonEscape(info.Message) + "\",");
-            builder.AppendLine("  \"backupExists\": " + (info.BackupExists ? "true" : "false") + ",");
-            builder.AppendLine("  \"backupIsValidOriginal\": " + (info.BackupIsValidOriginal ? "true" : "false") + ",");
-            builder.AppendLine("  \"backupPath\": \"" + JsonEscape(info.BackupPath) + "\"");
+            builder.AppendLine("  \"requiresPatch\": " + Bool(requiresPatch) + ",");
+            builder.AppendLine("  \"noFixNeeded\": " + Bool(info.NoFixNeeded) + ",");
+            builder.AppendLine("  \"backupExists\": " + Bool(info.BackupExists) + ",");
+            builder.AppendLine("  \"backupIsValidOriginal\": " + Bool(info.BackupIsValidOriginal) + ",");
+            builder.AppendLine("  \"backupFromManifest\": " + Bool(info.BackupFromManifest) + ",");
+            builder.AppendLine("  \"backupAssemblyVersion\": " + JsonStringOrNull(info.BackupAssemblyVersion) + ",");
+            builder.AppendLine("  \"backupPath\": " + JsonStringOrNull(info.BackupPath) + ",");
+            builder.AppendLine("  \"isPreRestriction\": " + Bool(info.IsPreRestriction) + ",");
+            builder.AppendLine("  \"autoUpdate\": {");
+            builder.AppendLine("    \"state\": \"" + info.AutoUpdateState + "\",");
+            builder.AppendLine("    \"text\": \"" + JsonEscape(info.AutoUpdateText) + "\",");
+            builder.AppendLine("    \"disabled\": " + Bool(info.AutoUpdateDisabled) + ",");
+            builder.AppendLine("    \"configured\": " + Bool(info.AutoUpdateState != AutoUpdateState.NotConfigured) + ",");
+            builder.AppendLine("    \"value\": " +
+                (info.AutoUpdateValue.HasValue
+                    ? info.AutoUpdateValue.Value.ToString(CultureInfo.InvariantCulture)
+                    : "null") + ",");
+            builder.AppendLine("    \"setupIni\": " + JsonStringOrNull(info.SetupIniPath) + ",");
+            builder.AppendLine("    \"error\": " + JsonStringOrNull(info.AutoUpdateError));
+            builder.AppendLine("  }");
             builder.AppendLine("}");
-            Console.WriteLine(builder.ToString());
+            return builder.ToString().TrimEnd();
+        }
+
+        private static string PatchJson(PatchResult result)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": true,");
+            builder.AppendLine("  \"exitCode\": 0,");
+            builder.AppendLine("  \"command\": \"patch\",");
+            builder.AppendLine("  \"target\": " + JsonStringOrNull(result.TargetPath) + ",");
+            builder.AppendLine("  \"output\": " + JsonStringOrNull(result.OutputPath) + ",");
+            builder.AppendLine("  \"backup\": " + JsonStringOrNull(result.BackupPath) + ",");
+            builder.AppendLine("  \"alreadyPatched\": " + Bool(result.AlreadyPatched) + ",");
+            builder.AppendLine("  \"dryRun\": " + Bool(result.DryRun) + ",");
+            builder.AppendLine("  \"originalSha256\": " + JsonStringOrNull(result.OriginalSha256) + ",");
+            builder.AppendLine("  \"patchedSha256\": " + JsonStringOrNull(result.PatchedSha256) + ",");
+            builder.AppendLine("  \"restoredMethods\": [" +
+                string.Join(", ", result.RestoredMethods.Select(m => "\"" + JsonEscape(m) + "\"")) + "],");
+            builder.AppendLine("  \"elapsedMs\": " + ((long)result.Elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture) + ",");
+            builder.AppendLine("  \"message\": " + JsonStringOrNull(result.Message));
+            builder.AppendLine("}");
+            return builder.ToString().TrimEnd();
+        }
+
+        private static string RestoreJson(PatchResult result)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": true,");
+            builder.AppendLine("  \"exitCode\": 0,");
+            builder.AppendLine("  \"command\": \"restore\",");
+            builder.AppendLine("  \"target\": " + JsonStringOrNull(result.TargetPath) + ",");
+            builder.AppendLine("  \"output\": " + JsonStringOrNull(result.OutputPath) + ",");
+            builder.AppendLine("  \"backup\": " + JsonStringOrNull(result.BackupPath) + ",");
+            builder.AppendLine("  \"alreadyOriginal\": " + Bool(result.AlreadyOriginal) + ",");
+            builder.AppendLine("  \"dryRun\": " + Bool(result.DryRun) + ",");
+            builder.AppendLine("  \"originalSha256\": " + JsonStringOrNull(result.OriginalSha256) + ",");
+            builder.AppendLine("  \"patchedSha256\": " + JsonStringOrNull(result.PatchedSha256) + ",");
+            builder.AppendLine("  \"elapsedMs\": " + ((long)result.Elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture) + ",");
+            builder.AppendLine("  \"message\": " + JsonStringOrNull(result.Message));
+            builder.AppendLine("}");
+            return builder.ToString().TrimEnd();
+        }
+
+        private static string AutoUpdateJson(AutoUpdateChange result, bool disable)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": true,");
+            builder.AppendLine("  \"exitCode\": 0,");
+            builder.AppendLine("  \"command\": \"" + (disable ? "disable-update" : "enable-update") + "\",");
+            builder.AppendLine("  \"target\": " + JsonStringOrNull(result.TargetPath) + ",");
+            builder.AppendLine("  \"setupIni\": " + JsonStringOrNull(result.SetupIniPath) + ",");
+            builder.AppendLine("  \"changed\": " + Bool(result.Changed) + ",");
+            builder.AppendLine("  \"alreadyInState\": " + Bool(result.AlreadyInState) + ",");
+            builder.AppendLine("  \"previousValue\": " + JsonStringOrNull(result.PreviousValue) + ",");
+            builder.AppendLine("  \"currentValue\": " + JsonStringOrNull(result.CurrentValue) + ",");
+            builder.AppendLine("  \"backup\": " + JsonStringOrNull(result.BackupPath) + ",");
+            builder.AppendLine("  \"message\": " + JsonStringOrNull(result.Message));
+            builder.AppendLine("}");
+            return builder.ToString().TrimEnd();
+        }
+
+        private static string SelfCheckJson(SelfCheckResult result)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": " + Bool(result.AllEmbeddedOk) + ",");
+            builder.AppendLine("  \"exitCode\": " + (result.AllEmbeddedOk ? 0 : 1) + ",");
+            builder.AppendLine("  \"command\": \"selfcheck\",");
+            builder.AppendLine("  \"path\": \"" + JsonEscape(result.ExePath) + "\",");
+            builder.AppendLine("  \"size\": " + result.Size.ToString(CultureInfo.InvariantCulture) + ",");
+            builder.AppendLine("  \"sha256\": \"" + result.ExeSha256 + "\",");
+            builder.AppendLine("  \"donorOk\": " + Bool(result.DonorOk) + ",");
+            builder.AppendLine("  \"donorSha256\": \"" + result.DonorSha256 + "\",");
+            builder.AppendLine("  \"cecilOk\": " + Bool(result.CecilOk) + ",");
+            builder.AppendLine("  \"cecilSha256\": \"" + result.CecilSha256 + "\",");
+            builder.AppendLine("  \"projectUrl\": \"" + JsonEscape(result.ProjectUrl) + "\"");
+            builder.AppendLine("}");
+            return builder.ToString().TrimEnd();
+        }
+
+        private static string ErrorJson(string command, string message, int exitCode)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": false,");
+            builder.AppendLine("  \"command\": \"" + JsonEscape(command ?? "") + "\",");
+            builder.AppendLine("  \"error\": \"" + JsonEscape(message ?? "") + "\",");
+            builder.AppendLine("  \"exitCode\": " + exitCode.ToString(CultureInfo.InvariantCulture));
+            builder.AppendLine("}");
+            return builder.ToString().TrimEnd();
+        }
+
+        private static void WriteJson(string json)
+        {
+            _stdout.WriteLine(json);
+            _stdout.Flush();
+        }
+
+        private static string Bool(bool value)
+        {
+            return value ? "true" : "false";
+        }
+
+        private static string JsonStringOrNull(string value)
+        {
+            return value == null ? "null" : "\"" + JsonEscape(value) + "\"";
         }
 
         private static string JsonEscape(string text)
         {
             if (text == null) return "";
-            return text.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+            var builder = new StringBuilder(text.Length + 8);
+            foreach (var c in text)
+            {
+                switch (c)
+                {
+                    case '\\': builder.Append("\\\\"); break;
+                    case '"': builder.Append("\\\""); break;
+                    case '\b': builder.Append("\\b"); break;
+                    case '\f': builder.Append("\\f"); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    default:
+                        if (c < 0x20)
+                            builder.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                        else
+                            builder.Append(c);
+                        break;
+                }
+            }
+            return builder.ToString();
         }
 
         private static void PrintLog(LogEntry entry)
@@ -439,10 +691,11 @@ namespace PCLDownloadFix.Cli
 
         private static void PrintBanner()
         {
+            if (_json) return;
             var previous = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("══════════════════════════════════════════════════════════");
-            Console.WriteLine("  PCL 下载修复器（第三方） · 控制台版 v1.0");
+            Console.WriteLine("  PCL 下载修复器（第三方） · 控制台版 v" + DisclaimerText.ProductVersion);
             Console.WriteLine("  Ethernos Studio · 恢复 PCL 2.99 的 Minecraft 下载功能");
             Console.WriteLine("══════════════════════════════════════════════════════════");
             Console.ForegroundColor = previous;
@@ -456,6 +709,8 @@ namespace PCLDownloadFix.Cli
             Console.WriteLine("  PCLDownloadFix.Console.exe restore [EXE] [选项]   还原为原版");
             Console.WriteLine("  PCLDownloadFix.Console.exe verify  [EXE] [--json]  检查文件状态");
             Console.WriteLine("  PCLDownloadFix.Console.exe info    [EXE] [--json]  显示详细信息");
+            Console.WriteLine("  PCLDownloadFix.Console.exe disable-update [EXE]   关闭 PCL 自动更新（停留当前版本）");
+            Console.WriteLine("  PCLDownloadFix.Console.exe enable-update  [EXE]   恢复 PCL 自动更新");
             Console.WriteLine("  PCLDownloadFix.Console.exe selfcheck [--json]     校验本程序完整性");
             Console.WriteLine("  PCLDownloadFix.Console.exe gui                    打开图形界面");
             Console.WriteLine("  PCLDownloadFix.Console.exe --version              显示版本");
@@ -466,11 +721,11 @@ namespace PCLDownloadFix.Cli
             Console.WriteLine("      --no-verify       跳过写入后的 IL 一致性校验");
             Console.WriteLine("  -n, --dry-run         只分析并模拟修复，不写文件");
             Console.WriteLine("  -y, --yes             确认免责声明（非交互环境必须）");
-            Console.WriteLine("      --json            以 JSON 输出 verify/info/selfcheck 结果");
+            Console.WriteLine("      --json            以 JSON 输出结果；stdout 只含 JSON，日志走 stderr");
             Console.WriteLine("      --pause           执行结束后等待按键");
             Console.WriteLine();
             Console.WriteLine("不指定 EXE 时，会在当前目录和程序目录自动查找 Plain Craft Launcher 2.exe。");
-            Console.WriteLine("执行 patch/restore/verify/info 前会显示免责声明并要求确认。");
+            Console.WriteLine("执行 patch/restore/verify/info/disable-update/enable-update 前会显示免责声明并要求确认。");
             Console.WriteLine("退出码：0 成功；1 失败；2 不支持的文件；3 未确认免责声明。");
             Console.WriteLine("建议先完全关闭 PCL。");
         }
@@ -501,6 +756,7 @@ namespace PCLDownloadFix.Cli
 
         private static void WaitIfInteractive()
         {
+            if (_json) return;
             if (!Console.IsInputRedirected)
             {
                 Console.WriteLine();
@@ -511,7 +767,7 @@ namespace PCLDownloadFix.Cli
 
         private static void WaitIfRequested(bool pause)
         {
-            if (!pause) return;
+            if (_json || !pause) return;
             Console.WriteLine();
             Console.WriteLine("按任意键退出...");
             Console.ReadKey(true);
@@ -526,5 +782,3 @@ namespace PCLDownloadFix.Cli
         }
     }
 }
-
-

@@ -57,9 +57,15 @@ namespace PCLDownloadFix
         }
     }
 
-    public sealed class PatchException : Exception
+    public class PatchException : Exception
     {
         public PatchException(string message) : base(message) { }
         public PatchException(string message, Exception inner) : base(message, inner) { }
+    }
+
+    /// <summary>Raised when the file is a valid assembly but not a supported PCL build.</summary>
+    public sealed class UnsupportedTargetException : PatchException
+    {
+        public UnsupportedTargetException(string message) : base(message) { }
     }
 }

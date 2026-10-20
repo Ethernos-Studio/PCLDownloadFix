@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -10,6 +10,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCLDownloadFix.Cli", "src\Cli\PCLDownloadFix.Cli.csproj", "{042F852C-29A9-41B0-B1FB-E8E5C55C60E1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCLDownloadFix.Gui", "src\Gui\PCLDownloadFix.Gui.csproj", "{B4978B44-C12A-4F98-8E05-58B34395CCBE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCLDownloadFix.Tests", "tests\PCLDownloadFix.Tests\PCLDownloadFix.Tests.csproj", "{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -45,6 +49,18 @@ Global
 		{B4978B44-C12A-4F98-8E05-58B34395CCBE}.Release|x64.Build.0 = Release|Any CPU
 		{B4978B44-C12A-4F98-8E05-58B34395CCBE}.Release|x86.ActiveCfg = Release|Any CPU
 		{B4978B44-C12A-4F98-8E05-58B34395CCBE}.Release|x86.Build.0 = Release|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Debug|x64.Build.0 = Debug|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Debug|x86.Build.0 = Debug|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Release|x64.ActiveCfg = Release|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Release|x64.Build.0 = Release|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Release|x86.ActiveCfg = Release|Any CPU
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -53,5 +69,6 @@ Global
 		{778427DF-EB2C-5228-964E-6D535DE253CA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{042F852C-29A9-41B0-B1FB-E8E5C55C60E1} = {778427DF-EB2C-5228-964E-6D535DE253CA}
 		{B4978B44-C12A-4F98-8E05-58B34395CCBE} = {778427DF-EB2C-5228-964E-6D535DE253CA}
+		{D0CACFDB-56DE-44D8-AC4C-D9FD0492267F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
