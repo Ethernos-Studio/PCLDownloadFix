@@ -1,0 +1,80 @@
+PCL 下载修复器（第三方）— 第三方声明与许可
+
+本工具是第三方项目，与 PCL（Plain Craft Launcher）官方及龙腾猫跃无关，未获得官方背书。
+工具名称以 PCL 开头并带有“第三方”标识，仅为说明兼容对象，不表示官方发行或认可。
+
+======================================================================
+1. PCL / Plain Craft Launcher
+======================================================================
+
+PCL 由龙腾猫跃开发。
+项目主页：https://github.com/Meloong-Git/PCL
+PCL 的分发与使用受其《PCL 分发有限许可》约束，详见 PCL 仓库中的 LICENCE 文件以及：
+https://shimo.im/docs/rGrd8pY8xWkt6ryW#anchor-X0bo
+
+本工具不包含 PCL 的完整程序、图标或其他资源。resources/RestoreDonor.dll 仅包含
+限制提交前官方构建中五个下载相关方法的 IL 模板，用于在用户自己的 PCL 副本上恢复
+对应方法。PCL 及其相关内容的全部权利仍归原作者所有。
+
+本工具是“重度使用”型的第三方二次创作：
+- 名称以 PCL 开头，并明确标注“第三方”；
+- 在“关于”页面与 README 中给出龙腾猫跃及 PCL 仓库的署名；
+- 公开本工具的完整源代码；
+- 仅用于个人、非商业用途，不提供与 PCL 赞助解锁类似的功能。
+
+======================================================================
+2. PCL-Re.Download_PATCH
+======================================================================
+
+下载恢复思路参考并交叉验证自 Jelly10086 的 PCL-Re.Download_PATCH 项目：
+https://github.com/Jelly10086/PCL-Re.Download_PATCH
+
+该项目采用 PolyForm Noncommercial License 1.0.0：
+https://polyformproject.org/licenses/noncommercial/1.0.0/
+Required Notice: Copyright (c) 2026 Jelly10086
+Required Notice: 本补丁基于 Jelly10086 的 PCL-Re.Download_PATCH 下载恢复方案。
+
+本工具未复制该项目的脚本或补丁数据；恢复模板来自 PCL 限制提交前的官方构建，
+并使用该项目的官方修补结果做行为对比验证。该项目的许可与署名要求在本工具中保留。
+
+======================================================================
+3. Mono.Cecil
+======================================================================
+
+Mono.Cecil 0.11.6
+Copyright (c) 2008 - 2011 Jb Evain
+Copyright (c) 2008 - 2011 Novell, Inc.
+https://github.com/jbevain/cecil
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+======================================================================
+4. 本工具
+======================================================================
+
+PCLDownloadFix 由 Ethernos Studio 开发，自身代码采用 MIT License，Copyright (c) 2026 Ethernos Studio。
+完整文本见 LICENSE。
+项目主页：https://github.com/Ethernos-Studio/PCLDownloadFix
+
+恢复模板中的 IL 来源于 PCL 限制提交前的官方实现，其权利与许可仍归 PCL 原作者所有；
+MIT 许可仅适用于本工具原创的补丁引擎、界面与文档。
+
+

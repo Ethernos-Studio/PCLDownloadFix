@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>PCLDownloadFix.Console</AssemblyName>
+    <RootNamespace>PCLDownloadFix.Cli</RootNamespace>
+    <ApplicationIcon>..\Gui\Assets\app.ico</ApplicationIcon>
+    <Product>PCL 下载修复器（第三方）</Product>
+    <AssemblyTitle>PCL 下载修复器（控制台版）</AssemblyTitle>
+    <Company>Ethernos Studio</Company>
+    <Authors>Ethernos Studio</Authors>
+    <Copyright>© 2026 Ethernos Studio</Copyright>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Reference Include="Mono.Cecil">
+      <HintPath>..\..\third_party\Mono.Cecil.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <EmbeddedResource Include="..\..\third_party\Mono.Cecil.dll" LogicalName="PCLDownloadFix.Mono.Cecil.dll" />
+    <EmbeddedResource Include="..\..\resources\RestoreDonor.dll" LogicalName="PCLDownloadFix.RestoreDonor.dll" />
+  </ItemGroup>
+</Project>
+

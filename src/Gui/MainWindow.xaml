@@ -1,0 +1,457 @@
+<Window x:Class="PCLDownloadFix.Gui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PCL 下载修复器（第三方）"
+        Width="1100" Height="810" MinWidth="980" MinHeight="720"
+        WindowStartupLocation="CenterScreen"
+        Background="#EEF3FA"
+        FontFamily="Microsoft YaHei UI"
+        TextOptions.TextFormattingMode="Display"
+        Icon="Assets/app.ico"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        AllowDrop="True"
+        DragEnter="Window_DragEnter"
+        DragLeave="Window_DragLeave"
+        Drop="Window_Drop"
+        PreviewDragOver="Window_PreviewDragOver">
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#1E293B" />
+        <SolidColorBrush x:Key="TextMuted" Color="#64748B" />
+        <SolidColorBrush x:Key="LineBrush" Color="#E2E8F0" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="18" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+        </Style>
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+
+        <Style x:Key="Muted" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="InfoLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+
+        <Style x:Key="InfoValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="BaseButton" TargetType="Button">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.90" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.78" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="18,13" />
+        </Style>
+
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="#CBD5E1" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="TinyButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="9,5" />
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#F8FAFC" />
+            <Setter Property="BorderBrush" Value="#CBD5E1" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" Background="Transparent" Padding="15,8" Margin="0,0,6,0" CornerRadius="8,8,0,0">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="White" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E2E8F0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        </Style>
+
+        <Style x:Key="Link" TargetType="Hyperlink">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="TextDecorations" Value="None" />
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Padding="26,18">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#3576F2" Offset="0" />
+                    <GradientStop Color="#1E4FC4" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="44" Height="44" CornerRadius="12" Background="#26FFFFFF">
+                        <Viewbox Margin="10">
+                            <Path Data="M12,3 L12,15 M6,9 L12,15 L18,9 M4,19 L20,19"
+                                  Stroke="White" StrokeThickness="2.2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" />
+                        </Viewbox>
+                    </Border>
+                    <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="PCL 下载修复器（第三方）" FontSize="21" FontWeight="Bold" Foreground="White" />
+                        <TextBlock Text="Ethernos Studio · 第三方工具 · 恢复 PCL 2.99 的 Minecraft 下载与整合包安装功能"
+                                   FontSize="12" Foreground="#D6E4FF" Margin="0,3,0,0" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Border Background="#22FFFFFF" CornerRadius="12" Padding="12,6">
+                        <TextBlock Text="v1.0.0" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="20,18,20,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="392" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" FocusVisualStyle="{x:Null}">
+                <StackPanel>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="目标程序" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Text="选择 PCL 主程序，或把 EXE 直接拖到窗口中。"
+                                       Style="{StaticResource Muted}" Margin="0,4,0,10" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="PathBox" Height="36" IsReadOnly="True" />
+                                <Button Grid.Column="1" x:Name="BrowseButton" Content="浏览..." Style="{StaticResource SecondaryButton}"
+                                        Margin="8,0,0,0" Click="Browse_Click" />
+                            </Grid>
+
+                            <Border x:Name="DropHint" Margin="0,10,0,0" Padding="10,9"
+                                    Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="7">
+                                <TextBlock Text="也可以把 Plain Craft Launcher 2.exe 拖到这里"
+                                           FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Center" />
+                            </Border>
+
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="版本" Style="{StaticResource InfoLabel}" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="VersionValue" Text="—" Style="{StaticResource InfoValue}" />
+
+                                <TextBlock Grid.Row="1" Text="大小" Style="{StaticResource InfoLabel}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="SizeValue" Text="—" Style="{StaticResource InfoValue}" />
+
+                                <TextBlock Grid.Row="2" Text="SHA-256" Style="{StaticResource InfoLabel}" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="HashValue" Text="—"
+                                           Style="{StaticResource InfoValue}" FontFamily="Consolas" FontSize="10.5" />
+
+                                <TextBlock Grid.Row="3" Text="状态" Style="{StaticResource InfoLabel}" />
+                                <StackPanel Grid.Row="3" Grid.Column="1" x:Name="StatePanel" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Border x:Name="StateBadge" Background="#F1F5F9" CornerRadius="9" Padding="8,2" VerticalAlignment="Center">
+                                        <TextBlock x:Name="StateText" Text="等待选择" FontSize="11" Foreground="#475569" />
+                                    </Border>
+                                    <TextBlock x:Name="StateDetail" Text="" Style="{StaticResource Muted}" Margin="8,0,0,0"
+                                               VerticalAlignment="Center" MaxWidth="230" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="4" Text="原版备份" Style="{StaticResource InfoLabel}" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="BackupValue" Text="—" Style="{StaticResource InfoValue}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="修复选项" Style="{StaticResource SectionTitle}" />
+                            <CheckBox x:Name="BackupCheck" Content="创建原版备份（推荐）" IsChecked="True" Margin="0,10,0,8" />
+                            <CheckBox x:Name="VerifyCheck" Content="修复后执行完整性校验" IsChecked="True" Margin="0,0,0,6" />
+                            <TextBlock Text="备份文件：Plain Craft Launcher 2.exe.pcl-original.bak"
+                                       FontSize="10.5" Foreground="#94A3B8" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Button x:Name="ApplyButton" Content="一键修复" Style="{StaticResource PrimaryButton}"
+                            Height="50" Margin="0,2,0,10" Click="Apply_Click" />
+
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="RestoreButton" Content="还原原版" Style="{StaticResource SecondaryButton}"
+                                Margin="0,0,5,0" Click="Restore_Click" />
+                        <Button Grid.Column="1" x:Name="VerifyButton" Content="校验文件" Style="{StaticResource SecondaryButton}"
+                                Margin="5,0,5,0" Click="Verify_Click" />
+                        <Button Grid.Column="2" x:Name="OpenFolderButton" Content="打开目录" Style="{StaticResource SecondaryButton}"
+                                Margin="5,0,0,0" Click="OpenFolder_Click" />
+                    </Grid>
+
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <TabControl Grid.Column="1" Margin="16,0,0,0">
+                <TabItem Header="执行日志">
+                    <Border Style="{StaticResource Card}" Margin="0,10,0,0" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid Margin="4,0,4,8">
+                                <TextBlock Text="操作记录" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="清空" Style="{StaticResource TinyButton}" Margin="0,0,6,0" Click="ClearLog_Click" />
+                                    <Button Content="复制" Style="{StaticResource TinyButton}" Margin="0,0,6,0" Click="CopyLog_Click" />
+                                    <Button Content="保存" Style="{StaticResource TinyButton}" Click="SaveLog_Click" />
+                                </StackPanel>
+                            </Grid>
+                            <ListBox x:Name="LogList" Grid.Row="1" Margin="2,0,0,0"
+                                     VirtualizingStackPanel.IsVirtualizing="True"
+                                     ScrollViewer.CanContentScroll="True">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="62" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding TimeText}" FontFamily="Consolas" FontSize="10.5"
+                                                       Foreground="#94A3B8" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                            <Border Grid.Column="1" Background="{Binding LevelBrush}" CornerRadius="4"
+                                                    Padding="5,1" Margin="4,1,0,0" VerticalAlignment="Top">
+                                                <TextBlock Text="{Binding LevelText}" FontSize="9.5" Foreground="White" />
+                                            </Border>
+                                            <TextBlock Grid.Column="2" Text="{Binding Message}" FontSize="11.5"
+                                                       Foreground="#334155" TextWrapping="Wrap" Margin="8,0,2,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+                </TabItem>
+
+                <TabItem Header="修复说明">
+                    <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="这个工具做什么？" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,14"
+                                           Text="PCL 2.99 将下载功能整体关闭：下载页无法加载版本列表，整合包安装、资源详情页的安装按钮以及修改页的原版游戏卡片也一并被限制。本工具把被替换掉的五个方法恢复为限制提交前的官方实现，不会修改其他功能或内嵌资源。" />
+
+                                <TextBlock Text="支持的版本" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,5,0,14"
+                                           Text="PCL 2.99.0.0 正式版 (413) 与快照版 (414)，以及后续仍包含相同限制代码的快照构建。若版本结构变化过大，工具会在写入前中止并给出原因，不会产生半成品。" />
+
+                                <TextBlock Text="安全设计" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,5,0,14"
+                                           Text="• 修改前自动创建 .pcl-original.bak 原版备份。&#10;• 只允许五个目标方法发生变化，其余 5994 个方法必须逐字节语义一致。&#10;• 写入临时文件后重新读取并再次校验，最后原子替换。&#10;• 全程离线运行，不上传任何文件或信息。" />
+
+                                <TextBlock Text="还原方法" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,5,0,0"
+                                           Text="点击“还原原版”，工具会校验备份并把原版 EXE 写回。也可以手动删除修复后的 EXE，把 .pcl-original.bak 改名为 Plain Craft Launcher 2.exe。" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </TabItem>
+
+                <TabItem Header="关于">
+                    <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="PCL 下载修复器（第三方） v1.0.0" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Text="开发者：Ethernos Studio" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentBrush}" Margin="0,4,0,8" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,14"
+                                           Text="由 Ethernos Studio 开发的、面向 PCL 2.99 快照版与正式版的第三方下载恢复工具。使用 .NET Framework 4.8 + Mono.Cecil 实现 IL 级方法恢复。" />
+
+                                <Button Content="验证本程序完整性" Style="{StaticResource SecondaryButton}"
+                                        HorizontalAlignment="Left" Margin="0,0,0,10" Click="SelfCheck_Click" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,6">
+                                    <Run Text="项目主页（GitHub）：" />
+                                    <Hyperlink NavigateUri="https://github.com/Ethernos-Studio/PCLDownloadFix"
+                                               RequestNavigate="Link_RequestNavigate">Ethernos-Studio/PCLDownloadFix</Hyperlink>
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,14">
+                                    <Run Text="参考项目：" />
+                                    <Hyperlink NavigateUri="https://github.com/Jelly10086/PCL-Re.Download_PATCH"
+                                               RequestNavigate="Link_RequestNavigate">Jelly10086/PCL-Re.Download_PATCH</Hyperlink>
+                                </TextBlock>
+
+                                <TextBlock Text="致谢与声明" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,10"
+                                           Text="本工具由 Ethernos Studio 开发。PCL（Plain Craft Launcher）由龙腾猫跃开发，本工具与 PCL 官方无关，未获得官方背书。PCL 及其相关内容的权利与许可归原作者所有，请遵守 PCL 的分发许可，仅用于个人、非商业用途。" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,10"
+                                           Text="下载恢复方案参考并验证自 Jelly10086 的 PCL-Re.Download_PATCH 项目；本工具使用独立实现，但恢复目标与该方法一致，在此致谢。" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,10"
+                                           Text="IL 读写使用 MIT 许可的 Mono.Cecil 0.11.6。" />
+
+                                <TextBlock Text="版本信息" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimary}" Margin="0,4,0,6" />
+                                <TextBlock Style="{StaticResource Muted}"
+                                           Text="构建：.NET Framework 4.8 · AnyCPU&#10;界面：WPF&#10;恢复模板：PCL 2.99 限制提交前实现（5 个方法）" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </TabItem>
+            </TabControl>
+        </Grid>
+
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                Padding="20,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="190" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText" Text="就绪" FontSize="11.5" Foreground="{StaticResource TextMuted}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" x:Name="ElapsedText" Text="" FontSize="11" Foreground="#94A3B8"
+                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                <ProgressBar Grid.Column="2" x:Name="Progress" Height="4" IsIndeterminate="True"
+                             Visibility="Collapsed" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}" />
+            </Grid>
+        </Border>
+
+        <Border x:Name="DropOverlay" Grid.Row="1" Margin="20,18,20,10" Background="#223B82F6"
+                BorderBrush="#3B82F6" BorderThickness="2" CornerRadius="12" Visibility="Collapsed"
+                IsHitTestVisible="False" Panel.ZIndex="20">
+            <Border BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="10" Margin="8">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="松开鼠标，选择这个 PCL 程序" FontSize="18" FontWeight="SemiBold"
+                               Foreground="#1D4ED8" HorizontalAlignment="Center" />
+                    <TextBlock Text="Plain Craft Launcher 2.exe" FontSize="12" Foreground="#3B82F6"
+                               HorizontalAlignment="Center" Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>
+
+
+
+
+
