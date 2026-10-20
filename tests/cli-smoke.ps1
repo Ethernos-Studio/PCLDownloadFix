@@ -65,3 +65,8 @@ try {
 finally {
     Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# The last native command in this script intentionally exits non-zero (JSON error
+# contract tests). PowerShell would otherwise propagate that exit code even though
+# all assertions passed, failing the CI step.
+exit 0
