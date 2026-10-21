@@ -43,6 +43,10 @@ namespace PCLDownloadFix
         private const int ErrorMoreData = 234;
         private const int ErrorFileCorrupt = 1392;
         private const int OutputBufferSize = 8 * 1024 * 1024;
+        // USN_RECORD file references contain a 16-bit sequence number in the high
+        // bits. The MFT record index is the low 48 bits; parent lookup and the root
+        // check must use the index, not the full reference.
+        private const ulong FileReferenceMask = 0x0000FFFFFFFFFFFF;
 
         public static NtfsMftResult Scan(IEnumerable<string> scopeRoots, CancellationToken token,
             Action<NtfsMftProgress> progress, Action<string> log = null)
@@ -143,6 +147,8 @@ namespace PCLDownloadFix
                 var candidates = new List<Candidate>();
                 var input = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(MftEnumData)));
                 var output = Marshal.AllocHGlobal(OutputBufferSize);
+                long records = 0;
+                var versionCounts = new Dictionary<int, int>();
                 try
                 {
                     // FSCTL_ENUM_USN_DATA uses HighUsn as an upper filter. Passing
@@ -164,7 +170,6 @@ namespace PCLDownloadFix
                         HighUsn = nextUsn
                     };
 
-                    long records = 0;
                     ulong lastFileReference = 0;
                     var corruptRetries = 0;
                     while (true)
@@ -233,19 +238,45 @@ namespace PCLDownloadFix
                             if (recordLength < 60 || offset + recordLength > bytesReturned) break;
 
                             var major = (ushort)Marshal.ReadInt16(output, offset + 4);
-                            if (major != 2)
+                            int versionSeen;
+                            versionCounts.TryGetValue(major, out versionSeen);
+                            versionCounts[major] = versionSeen + 1;
+                            int parentOffset, attributesOffset, nameLengthOffset, nameOffsetField;
+                            int headerSize;
+                            if (major == 2)
+                            {
+                                parentOffset = 16;
+                                attributesOffset = 52;
+                                nameLengthOffset = 56;
+                                nameOffsetField = 58;
+                                headerSize = 60;
+                            }
+                            else if (major == 3 || major == 4)
+                            {
+                                // USN_RECORD_V3/V4 use 128-bit file IDs; the low
+                                // 64 bits still contain the MFT record index.
+                                parentOffset = 24;
+                                attributesOffset = 68;
+                                nameLengthOffset = 72;
+                                nameOffsetField = 74;
+                                headerSize = 76;
+                            }
+                            else
                             {
                                 offset += recordLength;
                                 continue;
                             }
 
-                            var fileReference = (ulong)Marshal.ReadInt64(output, offset + 8);
+                            var fileReference =
+                                (ulong)Marshal.ReadInt64(output, offset + 8) & FileReferenceMask;
                             lastFileReference = fileReference;
-                            var parentReference = (ulong)Marshal.ReadInt64(output, offset + 16);
-                            var attributes = (FileAttributes)Marshal.ReadInt32(output, offset + 52);
-                            var nameLength = Marshal.ReadInt16(output, offset + 56);
-                            var nameOffset = Marshal.ReadInt16(output, offset + 58);
-                            if (nameLength <= 0 || nameOffset < 60 || offset + nameOffset + nameLength > bytesReturned)
+                            var parentReference =
+                                (ulong)Marshal.ReadInt64(output, offset + parentOffset) & FileReferenceMask;
+                            var attributes = (FileAttributes)Marshal.ReadInt32(output, offset + attributesOffset);
+                            var nameLength = Marshal.ReadInt16(output, offset + nameLengthOffset);
+                            var nameOffset = Marshal.ReadInt16(output, offset + nameOffsetField);
+                            if (nameLength <= 0 || nameOffset < headerSize ||
+                                offset + nameOffset + nameLength > bytesReturned)
                             {
                                 offset += recordLength;
                                 continue;
@@ -322,6 +353,11 @@ namespace PCLDownloadFix
                     if (!PclIdentity.IsPclExecutable(path)) continue;
                     results.Add(path);
                 }
+                WriteLog(log, "MFT " + volumeRoot + " stats; records=" + records +
+                    "; versions=" + string.Join(",", versionCounts.Select(pair =>
+                        pair.Key + ":" + pair.Value)) +
+                    "; dirs=" + directories.Count + "; exeCandidates=" + candidates.Count +
+                    "; paths=" + results.Count);
                 return results;
             }
         }
@@ -346,6 +382,11 @@ namespace PCLDownloadFix
             var root = volumeRoot;
             if (!root.EndsWith("\\", StringComparison.Ordinal)) root += "\\";
             return root + string.Join("\\", parts) + (parts.Count > 0 ? "\\" : "") + candidate.Name;
+        }
+
+        internal static ulong MaskFileReference(ulong fileReference)
+        {
+            return fileReference & FileReferenceMask;
         }
 
         private static void WriteLog(Action<string> log, string message)
