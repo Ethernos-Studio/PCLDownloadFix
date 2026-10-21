@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Xunit;
@@ -39,6 +40,31 @@ namespace PCLDownloadFix.Tests
                 var results = PclScanner.Scan(new[] { workspace.Root }, 2, CancellationToken.None, null);
 
                 Assert.Empty(results);
+            }
+        }
+
+        [Fact]
+        public void Scan_Cancellation_KeepsAlreadyFoundSinkResults()
+        {
+            using (var workspace = new TempWorkspace())
+            {
+                var expected = Path.Combine(workspace.Root, PclScanner.ExecutableName);
+                File.WriteAllText(expected, "pcl");
+                for (var i = 0; i < 10; i++)
+                    Directory.CreateDirectory(Path.Combine(workspace.Root, "dir" + i));
+
+                var sink = new List<string>();
+                using (var source = new CancellationTokenSource())
+                {
+                    Assert.Throws<System.OperationCanceledException>(() =>
+                        PclScanner.Scan(new[] { workspace.Root }, 3, source.Token,
+                            progress =>
+                            {
+                                if (progress.Directories >= 1) source.Cancel();
+                            }, false, sink));
+                }
+
+                Assert.Contains(expected, sink);
             }
         }
 

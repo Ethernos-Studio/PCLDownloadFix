@@ -45,7 +45,7 @@ namespace PCLDownloadFix
         private const int OutputBufferSize = 8 * 1024 * 1024;
 
         public static NtfsMftResult Scan(IEnumerable<string> scopeRoots, CancellationToken token,
-            Action<NtfsMftProgress> progress)
+            Action<NtfsMftProgress> progress, Action<string> log = null)
         {
             var result = new NtfsMftResult
             {
@@ -54,6 +54,8 @@ namespace PCLDownloadFix
             };
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var scopes = WindowsSearchScanner.NormalizeScopes(scopeRoots);
+            WriteLog(log, "MFT scan start; scopes=" +
+                (scopes.Count == 0 ? "(all NTFS volumes)" : string.Join("; ", scopes)));
 
             foreach (var drive in GetNtfsFixedDrives())
             {
@@ -65,17 +67,20 @@ namespace PCLDownloadFix
 
                 try
                 {
+                    WriteLog(log, "MFT volume start " + volumeRoot);
                     var volumePath = @"\\.\" + drive.Name.TrimEnd('\\');
-                    var paths = ScanVolume(volumePath, volumeRoot, scopes, token, progress, result);
+                    var paths = ScanVolume(volumePath, volumeRoot, scopes, token, progress, result, log);
                     result.VolumesScanned++;
 
                     foreach (var path in paths)
                     {
                         if (seen.Add(path)) result.Paths.Add(path);
                     }
+                    WriteLog(log, "MFT volume done " + volumeRoot + "; paths=" + paths.Count);
                 }
                 catch (OperationCanceledException)
                 {
+                    WriteLog(log, "MFT cancelled at " + volumeRoot);
                     throw;
                 }
                 catch (Exception ex)
@@ -84,11 +89,15 @@ namespace PCLDownloadFix
                         result.FailedVolumes.Add(volumeRoot);
                     if (string.IsNullOrEmpty(result.Error))
                         result.Error = "扫描 " + volumeRoot + " 失败：" + ex.Message;
+                    WriteLog(log, "MFT volume failed " + volumeRoot, ex);
                 }
             }
 
             if (result.VolumesScanned == 0 && string.IsNullOrEmpty(result.Error) && scopes.Count > 0)
                 result.Error = "所选扫描范围中没有可读取的 NTFS 分区。";
+            WriteLog(log, "MFT scan end; volumes=" + result.VolumesScanned +
+                "; paths=" + result.Paths.Count + "; failed=" + result.FailedVolumes.Count);
+            if (!string.IsNullOrEmpty(result.Error)) WriteLog(log, "MFT error: " + result.Error);
 
             result.Paths = result.Paths
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
@@ -116,7 +125,8 @@ namespace PCLDownloadFix
         }
 
         private static IList<string> ScanVolume(string volumePath, string volumeRoot, IList<string> scopes,
-            CancellationToken token, Action<NtfsMftProgress> progress, NtfsMftResult result)
+            CancellationToken token, Action<NtfsMftProgress> progress, NtfsMftResult result,
+            Action<string> log)
         {
             using (var handle = CreateFile(volumePath, GenericRead,
                 FileShareRead | FileShareWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero))
@@ -139,8 +149,10 @@ namespace PCLDownloadFix
                     // long.MaxValue can make the driver walk an invalid range on some
                     // volumes (ERROR_FILE_CORRUPT / 1392); use the journal's NextUsn.
                     long nextUsn;
-                    if (!TryQueryJournal(handle, out nextUsn) || nextUsn <= 0)
-                        nextUsn = long.MaxValue;
+                    var journalOk = TryQueryJournal(handle, out nextUsn) && nextUsn > 0;
+                    if (!journalOk) nextUsn = long.MaxValue;
+                    WriteLog(log, "MFT " + volumeRoot + " journal=" +
+                        (journalOk ? "NextUsn=0x" + nextUsn.ToString("x") : "unavailable, using MaxUsn"));
 
                     var enumData = new MftEnumData
                     {
@@ -151,6 +163,7 @@ namespace PCLDownloadFix
 
                     long records = 0;
                     ulong lastFileReference = 0;
+                    var corruptRetries = 0;
                     while (true)
                     {
                         token.ThrowIfCancellationRequested();
@@ -175,6 +188,19 @@ namespace PCLDownloadFix
                             }
                             else if (error == ErrorFileCorrupt)
                             {
+                                // Isolated corrupt regions can fail one batch. Skip
+                                // forward from the last valid entry a few times, like
+                                // WizTree, instead of abandoning the whole volume.
+                                if (lastFileReference > 0 && lastFileReference < ulong.MaxValue &&
+                                    corruptRetries < 3)
+                                {
+                                    corruptRetries++;
+                                    enumData.StartFileReferenceNumber = lastFileReference + 1;
+                                    WriteLog(log, "MFT " + volumeRoot + " ERROR_FILE_CORRUPT at " +
+                                        enumData.StartFileReferenceNumber.ToString("x") +
+                                        "; retry " + corruptRetries + "/3");
+                                    continue;
+                                }
                                 throw new IOException(
                                     "卷 " + volumeRoot + " 的 MFT/USN 数据损坏（Win32 1392）。" +
                                     "建议先运行 chkdsk /scan，或改用目录遍历模式。");
@@ -250,6 +276,7 @@ namespace PCLDownloadFix
                             });
                         }
 
+                        if (parsed > 0) corruptRetries = 0;
                         if (moreData)
                         {
                             if (parsed == 0)
@@ -309,6 +336,18 @@ namespace PCLDownloadFix
             var root = volumeRoot;
             if (!root.EndsWith("\\", StringComparison.Ordinal)) root += "\\";
             return root + string.Join("\\", parts) + (parts.Count > 0 ? "\\" : "") + candidate.Name;
+        }
+
+        private static void WriteLog(Action<string> log, string message)
+        {
+            if (log == null) return;
+            try { log(message); } catch { }
+        }
+
+        private static void WriteLog(Action<string> log, string message, Exception exception)
+        {
+            if (log == null) return;
+            try { log(message + Environment.NewLine + exception); } catch { }
         }
 
         private static bool TryQueryJournal(SafeFileHandle handle, out long nextUsn)

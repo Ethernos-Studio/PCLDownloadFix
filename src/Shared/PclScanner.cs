@@ -76,9 +76,9 @@ namespace PCLDownloadFix
         }
 
         public static IList<string> Scan(IEnumerable<string> roots, int maxDepth, CancellationToken token,
-            Action<PclScanProgress> progress, bool identifyByContent = false)
+            Action<PclScanProgress> progress, bool identifyByContent = false, IList<string> sink = null)
         {
-            var results = new List<string>();
+            var results = sink ?? new List<string>();
             var seenResults = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var queue = new Queue<KeyValuePair<string, int>>();
@@ -135,6 +135,10 @@ namespace PCLDownloadFix
                         if (results.Count >= MaxResults) break;
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch
                 {
                     // Unreadable directory; keep scanning the rest.
@@ -155,14 +159,17 @@ namespace PCLDownloadFix
                         queue.Enqueue(new KeyValuePair<string, int>(full, current.Value + 1));
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch
                 {
                 }
             }
 
             Report(progress, directories, results.Count, null);
-            results.Sort(StringComparer.OrdinalIgnoreCase);
-            return results;
+            return results.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         public static IList<string> FindInDirectory(string directory, int maxDepth, CancellationToken token,

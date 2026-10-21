@@ -47,10 +47,10 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 
 signtool sign /fd SHA256 /f $pfx /p $plain `
   /tr http://timestamp.digicert.com /td SHA256 `
-  "dist\PCL下载修复器-第三方-v1.3.1\PCL下载修复器.exe" `
-  "dist\PCL下载修复器-第三方-v1.3.1\PCL下载修复器-控制台.exe"
+  "dist\PCL下载修复器-第三方-v1.3.2\PCL下载修复器.exe" `
+  "dist\PCL下载修复器-第三方-v1.3.2\PCL下载修复器-控制台.exe"
 
-signtool verify /pa /v "dist\PCL下载修复器-第三方-v1.3.1\PCL下载修复器.exe"
+signtool verify /pa /v "dist\PCL下载修复器-第三方-v1.3.2\PCL下载修复器.exe"
 ```
 
 签名后必须**重新生成** `SHA256SUMS.txt` 与 ZIP（`build.ps1` 会重算，但若在打包后签名，请手动更新校验和）。
@@ -59,18 +59,18 @@ signtool verify /pa /v "dist\PCL下载修复器-第三方-v1.3.1\PCL下载修复
 
 ```powershell
 .\build.ps1
-Get-Content .\dist\PCL下载修复器-第三方-v1.3.1\SHA256SUMS.txt
-Get-FileHash .\dist\PCL下载修复器-第三方-v1.3.1.zip -Algorithm SHA256
+Get-Content .\dist\PCL下载修复器-第三方-v1.3.2\SHA256SUMS.txt
+Get-FileHash .\dist\PCL下载修复器-第三方-v1.3.2.zip -Algorithm SHA256
 ```
 
 确认 ZIP 中不包含 `bin/`、`obj/`、`.pclfix.json`、测试样本或证书。
 
 ## 5. GitHub Release
 
-1. 推送标签：`git tag v1.3.1 && git push origin v1.3.1`。
+1. 推送标签：`git tag v1.3.2 && git push origin v1.3.2`。
 2. `.github/workflows/release.yml` 会自动构建、测试、打包、生成来源证明并创建 Release。
 3. 检查 Release 附件：
-   - `PCL下载修复器-第三方-v1.3.1.zip`
+   - `PCL下载修复器-第三方-v1.3.2.zip`
    - `.zip.sha256`
    - 包内 `SHA256SUMS.txt`
 4. 在 Release 说明中写清楚：支持的 PCL 构建、已知问题、是否已签名、SHA-256。

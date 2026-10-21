@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -17,6 +18,8 @@ namespace PCLDownloadFix.Gui
         private readonly ObservableCollection<BatchItem> _items = new ObservableCollection<BatchItem>();
         private readonly List<string> _scanRoots = new List<string>();
         private readonly Patcher _patcher;
+        private readonly BatchLog _log;
+        private string _scanErrorNote;
         private CancellationTokenSource _cts;
         private bool _busy;
 
@@ -25,9 +28,36 @@ namespace PCLDownloadFix.Gui
             InitializeComponent();
             InstanceList.ItemsSource = _items;
             _patcher = new Patcher(delegate { });
+            _log = new BatchLog();
+            WriteLogHeader();
             UpdateScanRootsText();
             UpdateScanModeHint();
             UpdateCounts();
+        }
+
+        private void WriteLogHeader()
+        {
+            _log.Write("PCLDownloadFix batch mode v" + DisclaimerText.ProductVersion);
+            _log.Write("OS=" + Environment.OSVersion + "; 64bitProcess=" + Environment.Is64BitProcess);
+            try
+            {
+                using (var identity = WindowsIdentity.GetCurrent())
+                {
+                    var principal = new WindowsPrincipal(identity);
+                    _log.Write("User=" + identity.Name + "; elevated=" +
+                        principal.IsInRole(WindowsBuiltInRole.Administrator));
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Write("Could not determine elevation", ex);
+            }
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _log.Dispose();
+            base.OnClosed(e);
         }
 
         private async void Scan_Click(object sender, RoutedEventArgs e)
@@ -41,7 +71,11 @@ namespace PCLDownloadFix.Gui
             var paths = new List<string>();
             var sources = new List<string>();
             string errorNote = null;
+            _scanErrorNote = null;
             var mftSucceeded = false;
+            _log.Write("Scan start; mode=" + mode + " (" +
+                (mode == 0 ? "Windows Search" : mode == 1 ? "NTFS MFT" : "directory walk") +
+                "); roots=" + (roots.Count == 0 ? "(none)" : string.Join("; ", roots)));
 
             _cts = new CancellationTokenSource();
             var stopwatch = Stopwatch.StartNew();
@@ -57,6 +91,7 @@ namespace PCLDownloadFix.Gui
                     if (!string.IsNullOrEmpty(search.Error))
                     {
                         errorNote = "Windows 搜索索引不可用：" + search.Error;
+                        _log.Write("Windows Search failed: " + search.Error);
                     }
                     else if (search.Paths.Count > 0)
                     {
@@ -85,7 +120,7 @@ namespace PCLDownloadFix.Gui
                         SetStatus("MFT " + p.Volume + "：" + p.Records + " 条记录，候选 " + p.Matches + " 个 EXE..."));
                     var mft = await Task.Run(() => NtfsMftScanner.Scan(
                         roots, _cts.Token,
-                        p => ((IProgress<NtfsMftProgress>)mftProgress).Report(p)), _cts.Token);
+                        p => ((IProgress<NtfsMftProgress>)mftProgress).Report(p), _log.Write), _cts.Token);
 
                     if (string.IsNullOrEmpty(mft.Error))
                     {
@@ -94,7 +129,10 @@ namespace PCLDownloadFix.Gui
                     else
                     {
                         errorNote = mft.Error;
+                        _scanErrorNote = "MFT 失败（详见日志）";
                         SetStatus("MFT 扫描失败：" + mft.Error);
+                        _log.Write("MFT failed: " + mft.Error);
+                        _log.Write("MFT failed volumes: " + string.Join("; ", mft.FailedVolumes));
                     }
 
                     // Paths returned by NtfsMftScanner only come from volumes that
@@ -137,6 +175,7 @@ namespace PCLDownloadFix.Gui
                                 else if (!string.IsNullOrEmpty(fallback.Error))
                                 {
                                     errorNote = errorNote ?? fallback.Error;
+                                    _log.Write("Windows Search fallback failed: " + fallback.Error);
                                 }
                             }
 
@@ -175,18 +214,55 @@ namespace PCLDownloadFix.Gui
                     (sources.Count > 0 ? "（" + string.Join("、", sources) + "，" : "（") +
                     stopwatch.Elapsed.TotalSeconds.ToString("0.0") + " 秒）。";
                 SetStatus(message + (string.IsNullOrEmpty(errorNote) ? "" : " " + errorNote));
+                _log.Write("Scan done; items=" + _items.Count + "; elapsed=" +
+                    stopwatch.Elapsed.TotalSeconds.ToString("0.0") + "s; sources=" +
+                    string.Join("; ", sources) + "; error=" + (errorNote ?? ""));
             }
             catch (OperationCanceledException)
             {
-                _items.Clear();
-                UpdateCounts();
-                SetStatus("扫描已取消，未保留未完成的结果。");
+                PreservePartialResults(paths);
+                _log.Write("Scan cancelled; keeping partial results=" + _items.Count);
+                if (_items.Count > 0)
+                {
+                    try
+                    {
+                        await ProbeItemsAsync(_items.ToList(), "正在识别已找到的实例...",
+                            CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Write("Probe after cancellation failed", ex);
+                    }
+                    SetStatus("扫描已取消，已保留 " + _items.Count +
+                        " 个已找到的实例；可点击“检测状态”补全信息。");
+                }
+                else
+                {
+                    SetStatus("扫描已取消，没有找到可保留的实例。");
+                }
             }
             catch (Exception ex)
             {
-                _items.Clear();
-                UpdateCounts();
-                SetStatus("扫描失败，未保留未完成的结果：" + ex.Message);
+                PreservePartialResults(paths);
+                _log.Write("Scan failed", ex);
+                if (_items.Count > 0)
+                {
+                    try
+                    {
+                        await ProbeItemsAsync(_items.ToList(), "正在识别已找到的实例...",
+                            CancellationToken.None);
+                    }
+                    catch (Exception probeError)
+                    {
+                        _log.Write("Probe after failure failed", probeError);
+                    }
+                    SetStatus("扫描失败，已保留 " + _items.Count +
+                        " 个已找到的实例：" + ex.Message);
+                }
+                else
+                {
+                    SetStatus("扫描失败，未找到可保留的实例：" + ex.Message);
+                }
             }
             finally
             {
@@ -200,13 +276,29 @@ namespace PCLDownloadFix.Gui
             List<string> sources, string label)
         {
             if (roots == null || roots.Count == 0) return;
-            SetStatus("正在扫描" + label + "（" + roots.Count + " 个文件夹）...");
+            SetStatus((string.IsNullOrEmpty(_scanErrorNote) ? "" : _scanErrorNote + "；") +
+                "正在扫描" + label + "（" + roots.Count + " 个文件夹）...");
+            _log.Write("Directory scan start: " + label + "; roots=" + string.Join("; ", roots));
             var progress = new Progress<PclScanProgress>(p =>
-                SetStatus("正在扫描：" + p.Directories + " 个目录，找到 " + p.Found + " 个 PCL 实例..."));
-            var scanned = await Task.Run(() => PclScanner.Scan(
-                roots, maxDepth, _cts.Token,
-                p => ((IProgress<PclScanProgress>)progress).Report(p), true), _cts.Token);
-            paths.AddRange(scanned);
+                SetStatus((string.IsNullOrEmpty(_scanErrorNote) ? "" : _scanErrorNote + "；") +
+                    "正在扫描：" + p.Directories + " 个目录，找到 " + p.Found + " 个 PCL 实例..."));
+            var found = new List<string>();
+            try
+            {
+                var scanned = await Task.Run(() => PclScanner.Scan(
+                    roots, maxDepth, _cts.Token,
+                    p => ((IProgress<PclScanProgress>)progress).Report(p), true, found), _cts.Token);
+                paths.AddRange(scanned);
+                _log.Write("Directory scan done: " + label + "; found=" + scanned.Count);
+            }
+            catch (Exception ex)
+            {
+                // Keep everything PclScanner already found, even if cancellation or
+                // an I/O error interrupted the walk.
+                AddUnique(paths, found);
+                _log.Write("Directory scan stopped: " + label + "; partial=" + found.Count, ex);
+                throw;
+            }
             if (!sources.Contains(label)) sources.Add(label);
         }
 
@@ -337,11 +429,29 @@ namespace PCLDownloadFix.Gui
             _items.Add(item);
         }
 
-        private async Task ProbeItemsAsync(IList<BatchItem> items, string status)
+        private void PreservePartialResults(IEnumerable<string> paths)
         {
+            var existing = new HashSet<string>(_items.Select(item => item.Path),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var raw in paths ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                string full;
+                try { full = Path.GetFullPath(raw); }
+                catch { continue; }
+                if (!existing.Add(full)) continue;
+                AddPlaceholder(full);
+            }
+            UpdateCounts();
+        }
+
+        private async Task ProbeItemsAsync(IList<BatchItem> items, string status,
+            CancellationToken? cancellationToken = null)
+        {
+            var token = cancellationToken ?? (_cts != null ? _cts.Token : CancellationToken.None);
             for (var i = 0; i < items.Count; i++)
             {
-                if (_cts != null) _cts.Token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
                 var item = items[i];
                 SetStatus(status + "（" + (i + 1) + "/" + items.Count + "）");
 
@@ -408,6 +518,7 @@ namespace PCLDownloadFix.Gui
                         item.AutoUpdateText = "—";
                         item.ActionText = "跳过";
                         item.Error = ex.Message;
+                        _log.Write("Detect failed: " + item.Path, ex);
                     }
                 }
                 SetStatus("状态检测完成。");
@@ -457,6 +568,7 @@ namespace PCLDownloadFix.Gui
                         item.StateText = "读取失败";
                         item.ActionText = "跳过";
                         item.Error = ex.Message;
+                        _log.Write("Read before processing failed: " + item.Path, ex);
                     }
                 }
 
@@ -522,6 +634,7 @@ namespace PCLDownloadFix.Gui
                         item.StateText = "失败";
                         item.Error = ex.Message;
                         failed++;
+                        _log.Write("Process failed: " + item.Path, ex);
                     }
                 }
 
@@ -630,11 +743,37 @@ namespace PCLDownloadFix.Gui
         private void SetStatus(string text)
         {
             StatusText.Text = text ?? "";
+            StatusText.ToolTip = string.IsNullOrEmpty(_log.FilePath)
+                ? StatusText.Text
+                : StatusText.Text + Environment.NewLine + Environment.NewLine + "日志：" + _log.FilePath;
         }
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
-            if (_cts != null) _cts.Cancel();
+            if (_cts != null)
+            {
+                _log.Write("Cancel requested");
+                _cts.Cancel();
+            }
+        }
+
+        private void OpenLog_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_log.FilePath) || !File.Exists(_log.FilePath))
+                {
+                    MessageBox.Show(this, "本次运行没有生成日志文件。", "日志",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                Process.Start("explorer.exe", "/select,\"" + _log.FilePath + "\"");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "无法打开日志：" + ex.Message, "日志",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -643,6 +782,16 @@ namespace PCLDownloadFix.Gui
             e.Cancel = true;
             MessageBox.Show(this, "正在扫描、检测或处理，请先等待完成或点击“取消”。", "请稍候",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private static void AddUnique(List<string> target, IEnumerable<string> paths)
+        {
+            var seen = new HashSet<string>(target, StringComparer.OrdinalIgnoreCase);
+            foreach (var path in paths ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                if (seen.Add(path)) target.Add(path);
+            }
         }
 
         private static bool IsDriveRoot(string path)

@@ -177,6 +177,8 @@
             <StackPanel Orientation="Horizontal">
                 <Button Content="移除选中" Style="{StaticResource BatchButton}" Click="RemoveSelected_Click" />
                 <Button Content="清空列表" Style="{StaticResource BatchButton}" Click="Clear_Click" />
+                <Button Content="打开日志" Style="{StaticResource BatchButton}" Click="OpenLog_Click"
+                        ToolTip="查看扫描模式、MFT 失败原因和每项处理结果" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="DetectButton" Content="检测状态" Style="{StaticResource BatchButton}"
