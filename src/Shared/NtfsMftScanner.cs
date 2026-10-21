@@ -149,10 +149,13 @@ namespace PCLDownloadFix
                     // long.MaxValue can make the driver walk an invalid range on some
                     // volumes (ERROR_FILE_CORRUPT / 1392); use the journal's NextUsn.
                     long nextUsn;
-                    var journalOk = TryQueryJournal(handle, out nextUsn) && nextUsn > 0;
+                    int journalError;
+                    var journalOk = TryQueryJournal(handle, out nextUsn, out journalError) && nextUsn > 0;
                     if (!journalOk) nextUsn = long.MaxValue;
                     WriteLog(log, "MFT " + volumeRoot + " journal=" +
-                        (journalOk ? "NextUsn=0x" + nextUsn.ToString("x") : "unavailable, using MaxUsn"));
+                        (journalOk
+                            ? "NextUsn=0x" + nextUsn.ToString("x")
+                            : "unavailable (Win32 " + journalError + "), using MaxUsn"));
 
                     var enumData = new MftEnumData
                     {
@@ -350,9 +353,10 @@ namespace PCLDownloadFix
             try { log(message + Environment.NewLine + exception); } catch { }
         }
 
-        private static bool TryQueryJournal(SafeFileHandle handle, out long nextUsn)
+        private static bool TryQueryJournal(SafeFileHandle handle, out long nextUsn, out int error)
         {
             nextUsn = 0;
+            error = 0;
             var size = Marshal.SizeOf(typeof(UsnJournalData));
             var buffer = Marshal.AllocHGlobal(size);
             try
@@ -360,15 +364,20 @@ namespace PCLDownloadFix
                 int returned;
                 if (!DeviceIoControl(handle, FsctlQueryUsnJournal, IntPtr.Zero, 0,
                         buffer, size, out returned, IntPtr.Zero))
+                {
+                    error = Marshal.GetLastWin32Error();
                     return false;
-                if (returned < size) return false;
+                }
+                // V0 is 56 bytes, V1 is 64; only NextUsn (offset 16..24) is required.
+                if (returned < 24) return false;
 
                 var data = (UsnJournalData)Marshal.PtrToStructure(buffer, typeof(UsnJournalData));
                 nextUsn = data.NextUsn;
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                error = ex.HResult;
                 return false;
             }
             finally
@@ -395,6 +404,11 @@ namespace PCLDownloadFix
             public long MaxUsn;
             public ulong MaximumSize;
             public ulong AllocationDelta;
+            // USN_JOURNAL_DATA_V1 on Windows 8+; the extra words make the
+            // output buffer 64 bytes, otherwise FSCTL_QUERY_USN_JOURNAL fails
+            // with ERROR_INSUFFICIENT_BUFFER and NextUsn is unavailable.
+            public ushort MinSupportedMajorVersion;
+            public ushort MaxSupportedMajorVersion;
         }
 
         private sealed class DirectoryEntry

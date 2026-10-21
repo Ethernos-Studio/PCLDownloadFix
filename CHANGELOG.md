@@ -6,6 +6,7 @@
 - 取消扫描或扫描出错时保留已经找到的实例，并自动补全版本信息；不再清空为未完成结果。
 - 修复目录扫描在子目录枚举时吞掉取消异常的问题。
 - MFT 遇到 `ERROR_FILE_CORRUPT` 时先从最后有效游标跳过并重试 3 次，仍失败才回退。
+- 使用 64 字节的 `USN_JOURNAL_DATA_V1` 输出缓冲查询 `NextUsn`，避免 `ERROR_INSUFFICIENT_BUFFER` 导致 HighUsn 退回 `long.MaxValue`。
 - 扫描状态在 MFT 失败、目录兜底期间保留“MFT 失败（详见日志）”提示。
 
 ## 1.3.1 - 2026-10-21
