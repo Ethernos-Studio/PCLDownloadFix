@@ -117,17 +117,27 @@ namespace PCLDownloadFix.Gui
                         }
                         else
                         {
-                            SetStatus("MFT 不可用，尝试 Windows 搜索索引...");
-                            var fallback = await Task.Run(() =>
-                                WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token, null));
-                            if (string.IsNullOrEmpty(fallback.Error) && fallback.Paths.Count > 0)
+                            if (mft.FailedVolumes.Count > 0)
                             {
-                                paths.AddRange(fallback.Paths);
-                                sources.Add("Windows 搜索索引（MFT 回退）");
+                                SetStatus("MFT 失败，目录遍历失败的卷（较慢）...");
+                                await ScanFoldersAsync(mft.FailedVolumes, 32, paths, sources,
+                                    "失败卷（MFT 回退）");
                             }
-                            else if (!string.IsNullOrEmpty(fallback.Error))
+
+                            if (paths.Count == 0)
                             {
-                                errorNote = errorNote ?? fallback.Error;
+                                SetStatus("MFT 不可用，尝试 Windows 搜索索引...");
+                                var fallback = await Task.Run(() =>
+                                    WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token, null));
+                                if (string.IsNullOrEmpty(fallback.Error) && fallback.Paths.Count > 0)
+                                {
+                                    paths.AddRange(fallback.Paths);
+                                    sources.Add("Windows 搜索索引（MFT 回退）");
+                                }
+                                else if (!string.IsNullOrEmpty(fallback.Error))
+                                {
+                                    errorNote = errorNote ?? fallback.Error;
+                                }
                             }
 
                             if (paths.Count == 0)

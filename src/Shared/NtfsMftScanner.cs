@@ -20,6 +20,7 @@ namespace PCLDownloadFix
     public sealed class NtfsMftResult
     {
         public IList<string> Paths { get; set; }
+        public IList<string> FailedVolumes { get; set; }
         public string Error { get; set; }
         public int VolumesScanned { get; set; }
     }
@@ -36,15 +37,21 @@ namespace PCLDownloadFix
         private const uint FileShareWrite = 0x00000002;
         private const uint OpenExisting = 3;
         private const uint FsctlEnumUsnData = 0x000900B3;
+        private const uint FsctlQueryUsnJournal = 0x000900F4;
         private const int ErrorHandleEof = 38;
         private const int ErrorInvalidParameter = 87;
         private const int ErrorMoreData = 234;
+        private const int ErrorFileCorrupt = 1392;
         private const int OutputBufferSize = 8 * 1024 * 1024;
 
         public static NtfsMftResult Scan(IEnumerable<string> scopeRoots, CancellationToken token,
             Action<NtfsMftProgress> progress)
         {
-            var result = new NtfsMftResult { Paths = new List<string>() };
+            var result = new NtfsMftResult
+            {
+                Paths = new List<string>(),
+                FailedVolumes = new List<string>()
+            };
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var scopes = WindowsSearchScanner.NormalizeScopes(scopeRoots);
 
@@ -73,6 +80,8 @@ namespace PCLDownloadFix
                 }
                 catch (Exception ex)
                 {
+                    if (!result.FailedVolumes.Contains(volumeRoot, StringComparer.OrdinalIgnoreCase))
+                        result.FailedVolumes.Add(volumeRoot);
                     if (string.IsNullOrEmpty(result.Error))
                         result.Error = "扫描 " + volumeRoot + " 失败：" + ex.Message;
                 }
@@ -126,11 +135,18 @@ namespace PCLDownloadFix
                 var output = Marshal.AllocHGlobal(OutputBufferSize);
                 try
                 {
+                    // FSCTL_ENUM_USN_DATA uses HighUsn as an upper filter. Passing
+                    // long.MaxValue can make the driver walk an invalid range on some
+                    // volumes (ERROR_FILE_CORRUPT / 1392); use the journal's NextUsn.
+                    long nextUsn;
+                    if (!TryQueryJournal(handle, out nextUsn) || nextUsn <= 0)
+                        nextUsn = long.MaxValue;
+
                     var enumData = new MftEnumData
                     {
                         StartFileReferenceNumber = 0,
                         LowUsn = 0,
-                        HighUsn = long.MaxValue
+                        HighUsn = nextUsn
                     };
 
                     long records = 0;
@@ -156,6 +172,12 @@ namespace PCLDownloadFix
                                 // last record we actually parsed instead of trusting the
                                 // 8-byte header of a partial buffer.
                                 moreData = true;
+                            }
+                            else if (error == ErrorFileCorrupt)
+                            {
+                                throw new IOException(
+                                    "卷 " + volumeRoot + " 的 MFT/USN 数据损坏（Win32 1392）。" +
+                                    "建议先运行 chkdsk /scan，或改用目录遍历模式。");
                             }
                             else
                             {
@@ -289,12 +311,51 @@ namespace PCLDownloadFix
             return root + string.Join("\\", parts) + (parts.Count > 0 ? "\\" : "") + candidate.Name;
         }
 
+        private static bool TryQueryJournal(SafeFileHandle handle, out long nextUsn)
+        {
+            nextUsn = 0;
+            var size = Marshal.SizeOf(typeof(UsnJournalData));
+            var buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                int returned;
+                if (!DeviceIoControl(handle, FsctlQueryUsnJournal, IntPtr.Zero, 0,
+                        buffer, size, out returned, IntPtr.Zero))
+                    return false;
+                if (returned < size) return false;
+
+                var data = (UsnJournalData)Marshal.PtrToStructure(buffer, typeof(UsnJournalData));
+                nextUsn = data.NextUsn;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
         [StructLayout(LayoutKind.Sequential, Pack = 8)]
         private struct MftEnumData
         {
             public ulong StartFileReferenceNumber;
             public long LowUsn;
             public long HighUsn;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+        private struct UsnJournalData
+        {
+            public ulong UsnJournalId;
+            public long FirstUsn;
+            public long NextUsn;
+            public long LowestValidUsn;
+            public long MaxUsn;
+            public ulong MaximumSize;
+            public ulong AllocationDelta;
         }
 
         private sealed class DirectoryEntry
