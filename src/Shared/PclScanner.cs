@@ -117,7 +117,7 @@ namespace PCLDownloadFix
 
                 try
                 {
-                    foreach (var file in Directory.EnumerateFiles(current.Key))
+                    foreach (var file in Directory.EnumerateFiles(current.Key, ExecutableName))
                     {
                         if (!IsPclFileName(file)) continue;
                         var full = Path.GetFullPath(file);

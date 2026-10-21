@@ -16,6 +16,7 @@
       <HintPath>..\..\third_party\Mono.Cecil.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="System.Windows.Forms" />
     <EmbeddedResource Include="..\..\third_party\Mono.Cecil.dll" LogicalName="PCLDownloadFix.Mono.Cecil.dll" />
     <EmbeddedResource Include="..\..\resources\RestoreDonor.dll" LogicalName="PCLDownloadFix.RestoreDonor.dll" />
     <Resource Include="Assets\app.ico" />

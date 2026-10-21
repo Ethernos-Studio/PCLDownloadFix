@@ -8,13 +8,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using Microsoft.Win32;
+using FolderBrowserDialog = System.Windows.Forms.FolderBrowserDialog;
 
 namespace PCLDownloadFix.Gui
 {
     public partial class BatchWindow : Window
     {
         private readonly ObservableCollection<BatchItem> _items = new ObservableCollection<BatchItem>();
+        private readonly List<string> _scanRoots = new List<string>();
         private readonly Patcher _patcher;
         private CancellationTokenSource _cts;
         private bool _busy;
@@ -24,6 +25,8 @@ namespace PCLDownloadFix.Gui
             InitializeComponent();
             InstanceList.ItemsSource = _items;
             _patcher = new Patcher(delegate { });
+            UpdateScanRootsText();
+            UpdateScanModeHint();
             UpdateCounts();
         }
 
@@ -31,21 +34,104 @@ namespace PCLDownloadFix.Gui
         {
             if (_busy) return;
 
+            var roots = _scanRoots.ToList();
+            var mode = ScanModeCombo.SelectedIndex;
+            var paths = new List<string>();
+            var sources = new List<string>();
+            string errorNote = null;
+
             _cts = new CancellationTokenSource();
-            SetBusy(true, "正在扫描常见目录...");
+            var stopwatch = Stopwatch.StartNew();
+            SetBusy(true, "正在扫描...");
             try
             {
-                var progress = new Progress<PclScanProgress>(p =>
-                    SetStatus("正在扫描：" + p.Directories + " 个目录，找到 " + p.Found + " 个 PCL 实例..."));
+                if (mode == 0)
+                {
+                    SetStatus("正在查询 Windows 搜索索引...");
+                    var search = await Task.Run(() =>
+                        WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token));
 
-                var paths = await Task.Run(() => PclScanner.Scan(
-                    PclScanner.DefaultRoots(), 4, _cts.Token,
-                    p => ((IProgress<PclScanProgress>)progress).Report(p)), _cts.Token);
+                    if (!string.IsNullOrEmpty(search.Error))
+                    {
+                        errorNote = "Windows 搜索索引不可用：" + search.Error;
+                    }
+                    else if (search.Paths.Count > 0)
+                    {
+                        paths.AddRange(search.Paths);
+                        sources.Add("Windows 搜索索引");
+                    }
+
+                    if (roots.Count > 0)
+                        await ScanFoldersAsync(roots, 16, paths, sources, "指定文件夹");
+                    else if (paths.Count == 0)
+                        await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录");
+                }
+                else if (mode == 1)
+                {
+                    SetStatus("正在读取 NTFS MFT（需要管理员权限）...");
+                    var mftProgress = new Progress<NtfsMftProgress>(p =>
+                        SetStatus("MFT " + p.Volume + "：" + p.Records + " 条记录，匹配 " + p.Matches + " 个..."));
+                    var mft = await Task.Run(() => NtfsMftScanner.Scan(
+                        _cts.Token,
+                        p => ((IProgress<NtfsMftProgress>)mftProgress).Report(p)), _cts.Token);
+
+                    if (mft.Paths.Count > 0)
+                    {
+                        paths.AddRange(mft.Paths);
+                        sources.Add("NTFS MFT");
+                    }
+                    if (!string.IsNullOrEmpty(mft.Error))
+                    {
+                        errorNote = mft.Error;
+                        SetStatus("MFT 扫描失败：" + mft.Error);
+                    }
+
+                    if (roots.Count > 0)
+                        await ScanFoldersAsync(roots, 16, paths, sources, "指定文件夹");
+
+                    if (paths.Count == 0)
+                    {
+                        SetStatus("MFT 不可用，尝试 Windows 搜索索引...");
+                        var fallback = await Task.Run(() =>
+                            WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token));
+                        if (string.IsNullOrEmpty(fallback.Error) && fallback.Paths.Count > 0)
+                        {
+                            paths.AddRange(fallback.Paths);
+                            sources.Add("Windows 搜索索引（MFT 回退）");
+                        }
+                        else if (!string.IsNullOrEmpty(fallback.Error))
+                        {
+                            errorNote = errorNote ?? fallback.Error;
+                        }
+                    }
+
+                    if (paths.Count == 0)
+                        await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录（MFT 回退）");
+                }
+                else
+                {
+                    if (roots.Count > 0)
+                        await ScanFoldersAsync(roots, 16, paths, sources, "指定文件夹");
+                    else
+                        await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录");
+                }
+
+                var unique = paths
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => { try { return Path.GetFullPath(p); } catch { return null; } })
+                    .Where(p => p != null)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
                 _items.Clear();
-                foreach (var path in paths) AddPlaceholder(path);
+                foreach (var path in unique) AddPlaceholder(path);
                 await ProbeItemsAsync(_items.ToList(), "正在识别版本...");
-                SetStatus("扫描完成：找到 " + _items.Count + " 个 PCL 实例。");
+
+                var message = "扫描完成：找到 " + _items.Count + " 个 PCL 实例" +
+                    (sources.Count > 0 ? "（" + string.Join("、", sources) + "，" : "（") +
+                    stopwatch.Elapsed.TotalSeconds.ToString("0.0") + " 秒）。";
+                SetStatus(message + (string.IsNullOrEmpty(errorNote) ? "" : " " + errorNote));
             }
             catch (OperationCanceledException)
             {
@@ -61,6 +147,75 @@ namespace PCLDownloadFix.Gui
                 _cts.Dispose();
                 _cts = null;
             }
+        }
+
+        private async Task ScanFoldersAsync(IList<string> roots, int maxDepth, List<string> paths,
+            List<string> sources, string label)
+        {
+            if (roots == null || roots.Count == 0) return;
+            SetStatus("正在扫描" + label + "（" + roots.Count + " 个文件夹）...");
+            var progress = new Progress<PclScanProgress>(p =>
+                SetStatus("正在扫描：" + p.Directories + " 个目录，找到 " + p.Found + " 个 PCL 实例..."));
+            var scanned = await Task.Run(() => PclScanner.Scan(
+                roots, maxDepth, _cts.Token,
+                p => ((IProgress<PclScanProgress>)progress).Report(p)), _cts.Token);
+            paths.AddRange(scanned);
+            if (!sources.Contains(label)) sources.Add(label);
+        }
+
+        private void ScanMode_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            UpdateScanModeHint();
+        }
+
+        private void UpdateScanModeHint()
+        {
+            if (ScanModeHint == null) return;
+            switch (ScanModeCombo == null ? 0 : ScanModeCombo.SelectedIndex)
+            {
+                case 1:
+                    ScanModeHint.Text = "MFT 完整且快，但需要管理员权限；非 NTFS 分区会跳过。";
+                    break;
+                case 2:
+                    ScanModeHint.Text = "逐目录遍历，兼容所有文件系统但较慢；建议添加扫描文件夹。";
+                    break;
+                default:
+                    ScanModeHint.Text = "最快，但只能找到 Windows 已建立索引的位置。";
+                    break;
+            }
+        }
+
+        private void AddScanFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (_busy) return;
+            using (var dialog = new FolderBrowserDialog
+            {
+                Description = "选择要扫描的文件夹（可重复添加多个）",
+                ShowNewFolderButton = false
+            })
+            {
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+                var path = Path.GetFullPath(dialog.SelectedPath);
+                if (!_scanRoots.Contains(path, StringComparer.OrdinalIgnoreCase))
+                    _scanRoots.Add(path);
+                UpdateScanRootsText();
+            }
+        }
+
+        private void ClearScanFolders_Click(object sender, RoutedEventArgs e)
+        {
+            if (_busy) return;
+            _scanRoots.Clear();
+            UpdateScanRootsText();
+        }
+
+        private void UpdateScanRootsText()
+        {
+            if (ScanRootsBox == null) return;
+            ScanRootsBox.Text = _scanRoots.Count == 0
+                ? "（未指定；按扫描方式使用索引或常见目录）"
+                : string.Join("; ", _scanRoots);
+            ScanRootsBox.ToolTip = ScanRootsBox.Text;
         }
 
         private async void Add_Click(object sender, RoutedEventArgs e)
