@@ -197,10 +197,17 @@ namespace PCLDownloadFix
                                 if (lastFileReference > 0 && lastFileReference < ulong.MaxValue &&
                                     corruptRetries < 3)
                                 {
+                                    // The failing start itself may be the corrupt record;
+                                    // skip a little on the first retry and progressively
+                                    // larger ranges if the damage is wider.
+                                    var skip = corruptRetries == 0 ? 2UL
+                                        : corruptRetries == 1 ? 1024UL : 65536UL;
+                                    if (lastFileReference > ulong.MaxValue - skip)
+                                        throw new IOException("卷 " + volumeRoot + " 的 MFT 游标溢出。");
                                     corruptRetries++;
-                                    enumData.StartFileReferenceNumber = lastFileReference + 1;
-                                    WriteLog(log, "MFT " + volumeRoot + " ERROR_FILE_CORRUPT at " +
-                                        enumData.StartFileReferenceNumber.ToString("x") +
+                                    enumData.StartFileReferenceNumber = lastFileReference + skip;
+                                    WriteLog(log, "MFT " + volumeRoot + " ERROR_FILE_CORRUPT; skip " +
+                                        skip + " to 0x" + enumData.StartFileReferenceNumber.ToString("x") +
                                         "; retry " + corruptRetries + "/3");
                                     continue;
                                 }
