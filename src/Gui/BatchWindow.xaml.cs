@@ -90,41 +90,50 @@ namespace PCLDownloadFix.Gui
                     if (string.IsNullOrEmpty(mft.Error))
                     {
                         mftSucceeded = true;
-                        paths.AddRange(mft.Paths);
-                        sources.Add("NTFS MFT");
                     }
                     else
                     {
-                        // A partially completed MFT scan must not be presented as a
-                        // result. Report the error and rebuild the list from a safe
-                        // fallback instead.
                         errorNote = mft.Error;
                         SetStatus("MFT 扫描失败：" + mft.Error);
                     }
 
-                    if (!mftSucceeded && paths.Count == 0)
+                    // Paths returned by NtfsMftScanner only come from volumes that
+                    // finished successfully. Keep those results even if another
+                    // selected volume failed; only fall back when nothing was read.
+                    if (mft.Paths.Count > 0)
                     {
-                        SetStatus("MFT 不可用，尝试 Windows 搜索索引...");
-                        var fallback = await Task.Run(() =>
-                            WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token, roots));
-                        if (string.IsNullOrEmpty(fallback.Error) && fallback.Paths.Count > 0)
-                        {
-                            paths.AddRange(fallback.Paths);
-                            sources.Add("Windows 搜索索引（MFT 回退）");
-                        }
-                        else if (!string.IsNullOrEmpty(fallback.Error))
-                        {
-                            errorNote = errorNote ?? fallback.Error;
-                        }
+                        paths.AddRange(mft.Paths);
+                        sources.Add(string.IsNullOrEmpty(mft.Error) ? "NTFS MFT" : "NTFS MFT（部分卷成功）");
                     }
 
                     if (!mftSucceeded && paths.Count == 0)
                     {
-                        var folders = roots.Where(r => !IsDriveRoot(r)).ToList();
-                        if (folders.Count > 0)
-                            await ScanFoldersAsync(folders, 16, paths, sources, "指定文件夹（MFT 回退）");
-                        else if (roots.Count == 0)
-                            await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录（MFT 回退）");
+                        if (roots.Count > 0)
+                        {
+                            // MFT failed, but the user already gave us an explicit scope.
+                            // Walk that scope instead of returning the few indexed hits.
+                            SetStatus("MFT 失败，改用目录遍历（较慢，完整）...");
+                            await ScanFoldersAsync(roots, 32, paths, sources, "指定文件夹（MFT 回退）");
+                        }
+                        else
+                        {
+                            SetStatus("MFT 不可用，尝试 Windows 搜索索引...");
+                            var fallback = await Task.Run(() =>
+                                WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token, null));
+                            if (string.IsNullOrEmpty(fallback.Error) && fallback.Paths.Count > 0)
+                            {
+                                paths.AddRange(fallback.Paths);
+                                sources.Add("Windows 搜索索引（MFT 回退）");
+                            }
+                            else if (!string.IsNullOrEmpty(fallback.Error))
+                            {
+                                errorNote = errorNote ?? fallback.Error;
+                            }
+
+                            if (paths.Count == 0)
+                                await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources,
+                                    "常见目录（MFT 回退）");
+                        }
                     }
                 }
                 else

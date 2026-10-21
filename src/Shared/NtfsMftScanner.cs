@@ -37,8 +37,9 @@ namespace PCLDownloadFix
         private const uint OpenExisting = 3;
         private const uint FsctlEnumUsnData = 0x000900B3;
         private const int ErrorHandleEof = 38;
+        private const int ErrorInvalidParameter = 87;
         private const int ErrorMoreData = 234;
-        private const int OutputBufferSize = 4 * 1024 * 1024;
+        private const int OutputBufferSize = 8 * 1024 * 1024;
 
         public static NtfsMftResult Scan(IEnumerable<string> scopeRoots, CancellationToken token,
             Action<NtfsMftProgress> progress)
@@ -232,10 +233,18 @@ namespace PCLDownloadFix
                             if (parsed == 0)
                                 throw new Win32Exception(ErrorMoreData,
                                     "读取 " + volumeRoot + " 的 MFT 时收到不完整的数据块。");
-                            if (lastFileReference == ulong.MaxValue) break;
-                            next = lastFileReference + 1;
+                            // Prefer the next-FRN value supplied by the driver, but never
+                            // go backwards or trust a zero value from a partial buffer.
+                            if (next == 0 || next <= lastFileReference)
+                            {
+                                if (lastFileReference == ulong.MaxValue) break;
+                                next = lastFileReference + 1;
+                            }
                         }
                         if (next == 0 || parsed == 0) break;
+                        if (next <= enumData.StartFileReferenceNumber)
+                            throw new Win32Exception(ErrorInvalidParameter,
+                                "读取 " + volumeRoot + " 的 MFT 时游标没有前进，已停止以避免死循环。");
                         enumData.StartFileReferenceNumber = next;
                     }
                 }
