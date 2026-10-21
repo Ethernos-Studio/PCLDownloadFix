@@ -22,6 +22,25 @@ namespace PCLDownloadFix.Tests
 
         [Fact]
         [Trait("Category", "Integration")]
+        public void BuildInfo_ReportsInternalBuildKeys()
+        {
+            var source414 = Env("PCLDF_TEST_ORIGINAL_414");
+            var source413 = Env("PCLDF_TEST_ORIGINAL_413");
+            var source412 = Env("PCLDF_TEST_PRE_412");
+            if (source414 == null || source413 == null || source412 == null) return;
+
+            Assert.Equal("414.00", PclBuildInfo.Probe(source414).BuildKey);
+            Assert.Equal("413.50", PclBuildInfo.Probe(source413).BuildKey);
+            Assert.Equal("411.50", PclBuildInfo.Probe(source412).BuildKey);
+
+            var patcher = new Patcher(_ => { });
+            Assert.Equal(414, patcher.Inspect(source414).VersionCode);
+            Assert.Equal(413, patcher.Inspect(source413).VersionCode);
+            Assert.Equal(411, patcher.Inspect(source412).VersionCode);
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
         public void Patch414_Restore_RoundTrips()
         {
             var source = Env("PCLDF_TEST_ORIGINAL_414");

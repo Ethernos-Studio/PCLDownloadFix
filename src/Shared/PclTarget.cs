@@ -98,6 +98,48 @@ namespace PCLDownloadFix
             get { return Assembly.Name.Version == null ? "" : Assembly.Name.Version.ToString(); }
         }
 
+        public PclBuildInfo GetBuildInfo()
+        {
+            var type = Assembly.MainModule.GetType("PCL.ModBase");
+            if (type == null)
+                return new PclBuildInfo { Error = "未找到 PCL.ModBase 类型。" };
+
+            var versionCode = ReadIntConstant(type, "VersionCode");
+            var buildType = ReadIntConstant(type, "BuildType");
+            var info = new PclBuildInfo
+            {
+                VersionCode = versionCode,
+                BuildType = buildType,
+                BuildKey = PclBuildInfo.FormatBuildKey(versionCode, buildType),
+                VersionBaseName = ReadStringConstant(type, "VersionBaseName"),
+                VersionDisplay = ReadStringConstant(type, "VersionDisplay")
+            };
+
+            if (!versionCode.HasValue || !buildType.HasValue)
+                info.Error = "未找到 PCL 版本常量。";
+            return info;
+        }
+
+        private static int? ReadIntConstant(TypeDefinition type, string name)
+        {
+            var field = type.Fields.FirstOrDefault(f => f.Name == name && f.HasConstant);
+            if (field == null || field.Constant == null) return null;
+            try
+            {
+                return Convert.ToInt32(field.Constant);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string ReadStringConstant(TypeDefinition type, string name)
+        {
+            var field = type.Fields.FirstOrDefault(f => f.Name == name && f.HasConstant);
+            return field == null ? null : field.Constant as string;
+        }
+
         public string ExtractDependencies(string tempRoot)
         {
             var resource = Assembly.MainModule.Resources

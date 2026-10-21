@@ -88,6 +88,10 @@ namespace PCLDownloadFix
         public string BackupSha256 { get; set; }
         public string BackupAssemblyVersion { get; set; }
         public bool BackupFromManifest { get; set; }
+        public int? VersionCode { get; set; }
+        public int? BuildType { get; set; }
+        public string BuildKey { get; set; }
+        public string VersionText { get; set; }
         public bool IsPreRestriction { get; set; }
         public string SetupIniPath { get; set; }
         public AutoUpdateState AutoUpdateState { get; set; }

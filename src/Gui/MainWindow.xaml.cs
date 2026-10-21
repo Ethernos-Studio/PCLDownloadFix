@@ -292,6 +292,20 @@ namespace PCLDownloadFix.Gui
             await SelectPathAsync(_info.Path);
         }
 
+        private void Batch_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var window = new BatchWindow { Owner = this };
+                window.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "无法打开批量模式：" + ex.Message, "批量模式",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void OpenFolder_Click(object sender, RoutedEventArgs e)
         {
             var path = _info != null ? _info.Path : _selectedPath;

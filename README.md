@@ -37,6 +37,7 @@ PCL 2.99 在源码中把 `ModSecret.RestrictMcDownload` 设为编译期常量 `T
 
 - **一键修复**：自动识别 PCL 2.99 正式版 (413)、快照版 (414) 及结构兼容的后续快照
 - **停留在 2.99 之前**：对 412（2.14）等尚未升级的版本，可关闭 PCL 自动更新，避免被自动升级到 2.99，从而继续使用现有下载功能
+- **批量模式**：独立窗口扫描、拖入或粘贴多个 PCL 实例，按内部构建号 `411.50/412.00` 关闭更新、`413.50/414.00` 修复下载
 - **完整恢复**：不仅下载页，整合包安装、资源详情页安装按钮、修改页原版卡片一并恢复
 - **更新后仍可修复**：PCL 自动更新会替换 EXE；工具会自动归档旧备份并继续修复，不再要求手动删除 `.bak`
 - **安全备份**：修改前创建 `Plain Craft Launcher 2.exe.pcl-original.bak`，并写入 `.pclfix.json` 还原清单
@@ -98,6 +99,24 @@ SystemSystemUpdate:3
 - 关闭更新后会错过 PCL 官方修复和安全更新；确认自己能承担这个取舍后再使用。
 - 如果 PCL 已经升级到 2.99，关闭更新不能恢复下载功能，请使用“一键修复”；关闭更新只能防止已修复的版本被自动覆盖。
 
+### 批量模式
+
+主界面右上角点击“批量模式”会打开独立窗口：
+
+![批量模式](docs/batch.png)
+
+- **扫描**：扫描常见用户目录、程序目录以及固定/可移动驱动器的浅层目录，查找任意版本的 `Plain Craft Launcher 2.exe`；跳过系统目录、缓存和重解析点，可随时取消。深度/范围有限，找不到时可拖入或粘贴路径。
+- **添加地址**：支持多个路径，用换行或分号分隔；可以是 EXE，也可以包含 PCL 的文件夹。
+- **拖入**：可直接把多个文件或文件夹拖进批量窗口。
+- 每行可勾选；底部提供“全选”“全不选”“反选”“选择411.50和412.00”“选择413.50和414.00”。
+- **检测状态**：批量读取每个实例的内部构建号、补丁状态和自动更新状态。
+- **处理**：
+  - `< 413`（`411.50` / `412.00`）：关闭 PCL 自动更新；
+  - `>= 413`（`413.50` / `414.00`）：修复下载功能。
+- 处理前会汇总确认；逐项显示成功/失败，失败原因写入“状态”列。
+
+批量模式使用 PCL 程序集 `PCL.ModBase` 中的 `VersionCode` 与 `BuildType` 常量识别构建号，例如 `411.50` = 411 正式版、`414.00` = 414 快照版。
+
 ### 控制台
 
 ```text
@@ -132,6 +151,9 @@ PCL下载修复器-控制台.exe gui                      打开图形界面
   "exitCode": 0,
   "command": "verify",
   "state": "Original",
+  "buildKey": "414.00",
+  "versionCode": 414,
+  "buildType": 0,
   "requiresPatch": true,
   "noFixNeeded": false,
   "backupExists": false,
@@ -148,7 +170,7 @@ PCL下载修复器-控制台.exe gui                      打开图形界面
 }
 ```
 
-字段说明：`ok` 表示命令是否成功；`exitCode` 与进程退出码一致；`state` 为 `Original` / `Patched` / `Unrestricted` / `Partial` / `Unsupported`；`requiresPatch` 为 `true` 时表示需要修复。`patch` / `restore` 还会返回 `backup`、`originalSha256`、`patchedSha256`、`elapsedMs` 等字段。`disable-update` / `enable-update` 返回 `changed`、`alreadyInState`、`previousValue`、`currentValue`、`setupIni` 与 `backup`。
+字段说明：`ok` 表示命令是否成功；`exitCode` 与进程退出码一致；`state` 为 `Original` / `Patched` / `Unrestricted` / `Partial` / `Unsupported`；`buildKey` 是 PCL 内部构建号（如 `411.50`、`414.00`）；`requiresPatch` 为 `true` 时表示需要修复。`patch` / `restore` 还会返回 `backup`、`originalSha256`、`patchedSha256`、`elapsedMs` 等字段。`disable-update` / `enable-update` 返回 `changed`、`alreadyInState`、`previousValue`、`currentValue`、`setupIni` 与 `backup`。
 
 示例：
 
@@ -361,7 +383,7 @@ dotnet test tests\PCLDownloadFix.Tests\PCLDownloadFix.Tests.csproj -c Release
 
 测试分为三层：
 
-- **单元测试**：IL 语义哈希、状态识别、备份轮换、清单、恢复模板哈希、自动更新配置读写与恢复；
+- **单元测试**：IL 语义哈希、状态识别、备份轮换、清单、恢复模板哈希、自动更新配置读写与恢复、PCL 扫描器与构建号解析；
 - **CLI 契约测试**：`--json` 的 stdout/stderr 分离、退出码、错误 JSON、自动更新命令；
 - **集成测试**：需要真实 PCL 构建，默认跳过。设置以下环境变量后会执行完整的修复、还原与“PCL 更新后重新修复”流程：
 
@@ -416,6 +438,7 @@ tests/
   cli-smoke.ps1           CLI 契约冒烟测试
 docs/
   screenshot.png
+  batch.png               批量模式
   ROADMAP.md              后续路线图
 .github/workflows/        CI 与 Release
 ```

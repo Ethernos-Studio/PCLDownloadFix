@@ -32,7 +32,8 @@ dotnet test tests\PCLDownloadFix.Tests\PCLDownloadFix.Tests.csproj -c Release --
 2. `restore` → 确认哈希回到原值；
 3. 把 413 覆盖到同一路径，再次 `patch` → 确认旧备份归档、可正常还原；
 4. 用 `--dry-run` 和 `--output` 各跑一次，确认原文件未被修改；
-5. 复制 412 到临时目录，`disable-update` 后确认 `PCL\Setup.ini` 写入 `SystemSystemUpdate:3`，再 `enable-update` 恢复原值。
+5. 复制 412 到临时目录，`disable-update` 后确认 `PCL\Setup.ini` 写入 `SystemSystemUpdate:3`，再 `enable-update` 恢复原值；
+6. 打开“批量模式”，粘贴或拖入 412/414，检测状态后处理：412 应关闭自动更新，414 应修复下载。
 
 ## 3. 代码签名（推荐）
 
@@ -46,10 +47,10 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 
 signtool sign /fd SHA256 /f $pfx /p $plain `
   /tr http://timestamp.digicert.com /td SHA256 `
-  "dist\PCL下载修复器-第三方-v1.2.0\PCL下载修复器.exe" `
-  "dist\PCL下载修复器-第三方-v1.2.0\PCL下载修复器-控制台.exe"
+  "dist\PCL下载修复器-第三方-v1.3.0\PCL下载修复器.exe" `
+  "dist\PCL下载修复器-第三方-v1.3.0\PCL下载修复器-控制台.exe"
 
-signtool verify /pa /v "dist\PCL下载修复器-第三方-v1.2.0\PCL下载修复器.exe"
+signtool verify /pa /v "dist\PCL下载修复器-第三方-v1.3.0\PCL下载修复器.exe"
 ```
 
 签名后必须**重新生成** `SHA256SUMS.txt` 与 ZIP（`build.ps1` 会重算，但若在打包后签名，请手动更新校验和）。
@@ -58,18 +59,18 @@ signtool verify /pa /v "dist\PCL下载修复器-第三方-v1.2.0\PCL下载修复
 
 ```powershell
 .\build.ps1
-Get-Content .\dist\PCL下载修复器-第三方-v1.2.0\SHA256SUMS.txt
-Get-FileHash .\dist\PCL下载修复器-第三方-v1.2.0.zip -Algorithm SHA256
+Get-Content .\dist\PCL下载修复器-第三方-v1.3.0\SHA256SUMS.txt
+Get-FileHash .\dist\PCL下载修复器-第三方-v1.3.0.zip -Algorithm SHA256
 ```
 
 确认 ZIP 中不包含 `bin/`、`obj/`、`.pclfix.json`、测试样本或证书。
 
 ## 5. GitHub Release
 
-1. 推送标签：`git tag v1.2.0 && git push origin v1.2.0`。
+1. 推送标签：`git tag v1.3.0 && git push origin v1.3.0`。
 2. `.github/workflows/release.yml` 会自动构建、测试、打包、生成来源证明并创建 Release。
 3. 检查 Release 附件：
-   - `PCL下载修复器-第三方-v1.2.0.zip`
+   - `PCL下载修复器-第三方-v1.3.0.zip`
    - `.zip.sha256`
    - 包内 `SHA256SUMS.txt`
 4. 在 Release 说明中写清楚：支持的 PCL 构建、已知问题、是否已签名、SHA-256。
@@ -88,4 +89,3 @@ Get-FileHash .\dist\PCL下载修复器-第三方-v1.2.0.zip -Algorithm SHA256
 - 关注 Issue 中的 PCL 新版本反馈，必要时更新支持矩阵；
 - 把新的 PCL 构建加入私有集成测试样本；
 - 若 PCL 改变限制方式，按 `docs/ROADMAP.md` 的“版本韧性”处理。
-

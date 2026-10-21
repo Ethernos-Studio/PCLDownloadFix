@@ -373,6 +373,7 @@ namespace PCLDownloadFix.Cli
                 Console.WriteLine("文件大小  : " + HashUtil.FormatSize(info.Size));
                 Console.WriteLine("文件版本  : " + (string.IsNullOrEmpty(info.FileVersion) ? info.AssemblyVersion : info.FileVersion));
                 Console.WriteLine("构建识别  : " + info.BuildLabel);
+                if (!string.IsNullOrEmpty(info.BuildKey)) Console.WriteLine("构建版本  : " + info.BuildKey);
                 Console.WriteLine("补丁状态  : " + info.StateText);
                 Console.WriteLine("状态说明  : " + info.Message);
                 Console.WriteLine("SHA-256   : " + info.Sha256);
@@ -499,6 +500,10 @@ namespace PCLDownloadFix.Cli
             builder.AppendLine("  \"fileVersion\": \"" + JsonEscape(info.FileVersion) + "\",");
             builder.AppendLine("  \"assemblyVersion\": \"" + JsonEscape(info.AssemblyVersion) + "\",");
             builder.AppendLine("  \"build\": \"" + JsonEscape(info.BuildLabel) + "\",");
+            builder.AppendLine("  \"versionCode\": " + (info.VersionCode.HasValue ? info.VersionCode.Value.ToString(CultureInfo.InvariantCulture) : "null") + ",");
+            builder.AppendLine("  \"buildType\": " + (info.BuildType.HasValue ? info.BuildType.Value.ToString(CultureInfo.InvariantCulture) : "null") + ",");
+            builder.AppendLine("  \"buildKey\": " + JsonStringOrNull(info.BuildKey) + ",");
+            builder.AppendLine("  \"versionText\": " + JsonStringOrNull(info.VersionText) + ",");
             builder.AppendLine("  \"state\": \"" + info.State + "\",");
             builder.AppendLine("  \"stateText\": \"" + JsonEscape(info.StateText) + "\",");
             builder.AppendLine("  \"message\": \"" + JsonEscape(info.Message) + "\",");

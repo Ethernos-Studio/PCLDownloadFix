@@ -118,7 +118,17 @@ namespace PCLDownloadFix
                 string detail;
                 info.State = target.GetState(out detail);
                 info.Message = detail;
+
+                var build = target.GetBuildInfo();
+                info.VersionCode = build.VersionCode;
+                info.BuildType = build.BuildType;
+                info.BuildKey = build.BuildKey;
+                info.VersionText = string.IsNullOrEmpty(build.VersionDisplay)
+                    ? build.VersionBaseName
+                    : build.VersionDisplay;
             }
+
+            ApplyKnownBuildVersion(info);
 
             if (info.State == PatchState.Unsupported)
             {
@@ -142,9 +152,11 @@ namespace PCLDownloadFix
             if (string.Equals(info.Sha256, PreRestrictionHash, StringComparison.OrdinalIgnoreCase))
                 info.State = PatchState.Unrestricted;
 
-            info.IsPreRestriction = string.Equals(info.Sha256, PreRestrictionHash, StringComparison.OrdinalIgnoreCase) ||
-                                    (!string.IsNullOrEmpty(info.AssemblyVersion) &&
-                                     info.AssemblyVersion.StartsWith("2.14", StringComparison.Ordinal));
+            info.IsPreRestriction = info.VersionCode.HasValue
+                ? info.VersionCode.Value < 413
+                : string.Equals(info.Sha256, PreRestrictionHash, StringComparison.OrdinalIgnoreCase) ||
+                  (!string.IsNullOrEmpty(info.AssemblyVersion) &&
+                   info.AssemblyVersion.StartsWith("2.14", StringComparison.Ordinal));
 
             var autoUpdate = AutoUpdateSettings.Read(full);
             info.SetupIniPath = autoUpdate.SetupIniPath;
@@ -561,6 +573,35 @@ namespace PCLDownloadFix
         private static Stream OpenDonorStream()
         {
             return EmbeddedResources.OpenDonor();
+        }
+
+        private static void ApplyKnownBuildVersion(PclTargetInfo info)
+        {
+            if (info.VersionCode.HasValue && info.BuildType.HasValue) return;
+
+            int versionCode;
+            int buildType;
+            switch ((info.Sha256 ?? "").ToLowerInvariant())
+            {
+                case PreRestrictionHash:
+                    versionCode = 411;
+                    buildType = 50;
+                    break;
+                case "6b6e1260cb5a1d6a303855f1c60cab3d0bc1aebba7e40a964180188b271e7386":
+                    versionCode = 413;
+                    buildType = 50;
+                    break;
+                case "5b64d6d540c376390470cea3ab99d47661e8bca81be2ba647ea83e7d2e9428fa":
+                    versionCode = 414;
+                    buildType = 0;
+                    break;
+                default:
+                    return;
+            }
+
+            info.VersionCode = versionCode;
+            info.BuildType = buildType;
+            info.BuildKey = PclBuildInfo.FormatBuildKey(versionCode, buildType);
         }
 
         private static string DescribeBuild(PclTargetInfo info)
