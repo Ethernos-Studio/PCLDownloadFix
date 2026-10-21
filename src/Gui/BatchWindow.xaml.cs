@@ -34,11 +34,14 @@ namespace PCLDownloadFix.Gui
         {
             if (_busy) return;
 
+            _items.Clear();
+            UpdateCounts();
             var roots = _scanRoots.ToList();
             var mode = ScanModeCombo.SelectedIndex;
             var paths = new List<string>();
             var sources = new List<string>();
             string errorNote = null;
+            var mftSucceeded = false;
 
             _cts = new CancellationTokenSource();
             var stopwatch = Stopwatch.StartNew();
@@ -49,7 +52,7 @@ namespace PCLDownloadFix.Gui
                 {
                     SetStatus("正在查询 Windows 搜索索引...");
                     var search = await Task.Run(() =>
-                        WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token));
+                        WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token, roots));
 
                     if (!string.IsNullOrEmpty(search.Error))
                     {
@@ -61,39 +64,49 @@ namespace PCLDownloadFix.Gui
                         sources.Add("Windows 搜索索引");
                     }
 
-                    if (roots.Count > 0)
-                        await ScanFoldersAsync(roots, 16, paths, sources, "指定文件夹");
-                    else if (paths.Count == 0)
+                    if (roots.Count > 0 && paths.Count == 0)
+                    {
+                        var folders = roots.Where(r => !IsDriveRoot(r)).ToList();
+                        if (folders.Count > 0)
+                        {
+                            await ScanFoldersAsync(folders, 16, paths, sources, "指定文件夹");
+
+                        }
+                    }
+                    else if (roots.Count == 0 && paths.Count == 0)
+                    {
                         await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录");
+                    }
                 }
                 else if (mode == 1)
                 {
                     SetStatus("正在读取 NTFS MFT（需要管理员权限）...");
                     var mftProgress = new Progress<NtfsMftProgress>(p =>
-                        SetStatus("MFT " + p.Volume + "：" + p.Records + " 条记录，匹配 " + p.Matches + " 个..."));
+                        SetStatus("MFT " + p.Volume + "：" + p.Records + " 条记录，候选 " + p.Matches + " 个 EXE..."));
                     var mft = await Task.Run(() => NtfsMftScanner.Scan(
-                        _cts.Token,
+                        roots, _cts.Token,
                         p => ((IProgress<NtfsMftProgress>)mftProgress).Report(p)), _cts.Token);
 
-                    if (mft.Paths.Count > 0)
+                    if (string.IsNullOrEmpty(mft.Error))
                     {
+                        mftSucceeded = true;
                         paths.AddRange(mft.Paths);
                         sources.Add("NTFS MFT");
                     }
-                    if (!string.IsNullOrEmpty(mft.Error))
+                    else
                     {
+                        // A partially completed MFT scan must not be presented as a
+                        // result. Report the error and rebuild the list from a safe
+                        // fallback instead.
                         errorNote = mft.Error;
                         SetStatus("MFT 扫描失败：" + mft.Error);
                     }
 
-                    if (roots.Count > 0)
-                        await ScanFoldersAsync(roots, 16, paths, sources, "指定文件夹");
-
-                    if (paths.Count == 0)
+                    if (!mftSucceeded && paths.Count == 0)
                     {
                         SetStatus("MFT 不可用，尝试 Windows 搜索索引...");
                         var fallback = await Task.Run(() =>
-                            WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token));
+                            WindowsSearchScanner.FindPclExecutables(TimeSpan.FromSeconds(10), _cts.Token, roots));
                         if (string.IsNullOrEmpty(fallback.Error) && fallback.Paths.Count > 0)
                         {
                             paths.AddRange(fallback.Paths);
@@ -105,15 +118,26 @@ namespace PCLDownloadFix.Gui
                         }
                     }
 
-                    if (paths.Count == 0)
-                        await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录（MFT 回退）");
+                    if (!mftSucceeded && paths.Count == 0)
+                    {
+                        var folders = roots.Where(r => !IsDriveRoot(r)).ToList();
+                        if (folders.Count > 0)
+                            await ScanFoldersAsync(folders, 16, paths, sources, "指定文件夹（MFT 回退）");
+                        else if (roots.Count == 0)
+                            await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录（MFT 回退）");
+                    }
                 }
                 else
                 {
                     if (roots.Count > 0)
+                    {
                         await ScanFoldersAsync(roots, 16, paths, sources, "指定文件夹");
+
+                    }
                     else
+                    {
                         await ScanFoldersAsync(PclScanner.DefaultRoots(), 4, paths, sources, "常见目录");
+                    }
                 }
 
                 var unique = paths
@@ -135,11 +159,15 @@ namespace PCLDownloadFix.Gui
             }
             catch (OperationCanceledException)
             {
-                SetStatus("扫描已取消。");
+                _items.Clear();
+                UpdateCounts();
+                SetStatus("扫描已取消，未保留未完成的结果。");
             }
             catch (Exception ex)
             {
-                SetStatus("扫描失败：" + ex.Message);
+                _items.Clear();
+                UpdateCounts();
+                SetStatus("扫描失败，未保留未完成的结果：" + ex.Message);
             }
             finally
             {
@@ -158,7 +186,7 @@ namespace PCLDownloadFix.Gui
                 SetStatus("正在扫描：" + p.Directories + " 个目录，找到 " + p.Found + " 个 PCL 实例..."));
             var scanned = await Task.Run(() => PclScanner.Scan(
                 roots, maxDepth, _cts.Token,
-                p => ((IProgress<PclScanProgress>)progress).Report(p)), _cts.Token);
+                p => ((IProgress<PclScanProgress>)progress).Report(p), true), _cts.Token);
             paths.AddRange(scanned);
             if (!sources.Contains(label)) sources.Add(label);
         }
@@ -244,7 +272,7 @@ namespace PCLDownloadFix.Gui
 
                 if (Directory.Exists(path))
                 {
-                    var found = await Task.Run(() => PclScanner.FindInDirectory(path, 3, CancellationToken.None));
+                    var found = await Task.Run(() => PclScanner.FindInDirectory(path, 3, CancellationToken.None, true));
                     if (found.Count == 0)
                         errors.Add("目录中没有找到 PCL：" + path);
                     foreach (var file in found)
@@ -596,6 +624,21 @@ namespace PCLDownloadFix.Gui
             e.Cancel = true;
             MessageBox.Show(this, "正在扫描、检测或处理，请先等待完成或点击“取消”。", "请稍候",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private static bool IsDriveRoot(string path)
+        {
+            try
+            {
+                var full = Path.GetFullPath(path).TrimEnd('\\');
+                var root = Path.GetPathRoot(full);
+                if (string.IsNullOrEmpty(root)) return false;
+                return string.Equals(full, root.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static IEnumerable<string> SplitAddresses(string text)

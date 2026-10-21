@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using Xunit;
 
 namespace PCLDownloadFix.Tests
@@ -153,6 +154,31 @@ namespace PCLDownloadFix.Tests
                 Assert.Equal(PatchState.Unrestricted, info.State);
                 Assert.True(info.NoFixNeeded);
                 Assert.False(info.BackupExists);
+            }
+        }
+
+        [Fact]
+        [Trait("Category", "Integration")]
+        public void RenamedPcl_IsFoundByVersionResourceAndDirectoryScan()
+        {
+            var source = Env("PCLDF_TEST_PRE_412");
+            if (source == null) return;
+
+            using (var workspace = new TempWorkspace())
+            {
+                var folder = workspace.Path("Desktop");
+                Directory.CreateDirectory(folder);
+                var renamed = Path.Combine(folder, "样本 (1).exe");
+                File.Copy(source, renamed);
+
+                Assert.True(PclIdentity.IsPclExecutable(renamed));
+
+                var found = PclScanner.FindInDirectory(folder, 3, CancellationToken.None, true);
+                Assert.Contains(renamed, found);
+
+                var info = new Patcher(_ => { }).Inspect(renamed);
+                Assert.Equal(411, info.VersionCode);
+                Assert.Equal("411.50", info.BuildKey);
             }
         }
 

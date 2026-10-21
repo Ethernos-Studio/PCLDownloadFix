@@ -76,7 +76,7 @@ namespace PCLDownloadFix
         }
 
         public static IList<string> Scan(IEnumerable<string> roots, int maxDepth, CancellationToken token,
-            Action<PclScanProgress> progress)
+            Action<PclScanProgress> progress, bool identifyByContent = false)
         {
             var results = new List<string>();
             var seenResults = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -95,7 +95,8 @@ namespace PCLDownloadFix
 
                 if (File.Exists(full))
                 {
-                    if (IsPclFileName(full) && seenResults.Add(full))
+                    var isPcl = identifyByContent ? PclIdentity.IsPclExecutable(full) : IsPclFileName(full);
+                    if (isPcl && seenResults.Add(full))
                     {
                         results.Add(full);
                         Report(progress, directories, results.Count, Path.GetDirectoryName(full));
@@ -117,9 +118,18 @@ namespace PCLDownloadFix
 
                 try
                 {
-                    foreach (var file in Directory.EnumerateFiles(current.Key, ExecutableName))
+                    var pattern = identifyByContent ? "*.exe" : ExecutableName;
+                    foreach (var file in Directory.EnumerateFiles(current.Key, pattern))
                     {
-                        if (!IsPclFileName(file)) continue;
+                        if (identifyByContent)
+                        {
+                            if (!PclIdentity.IsPclExecutable(file)) continue;
+                        }
+                        else if (!IsPclFileName(file))
+                        {
+                            continue;
+                        }
+
                         var full = Path.GetFullPath(file);
                         if (seenResults.Add(full)) results.Add(full);
                         if (results.Count >= MaxResults) break;
@@ -155,11 +165,12 @@ namespace PCLDownloadFix
             return results;
         }
 
-        public static IList<string> FindInDirectory(string directory, int maxDepth, CancellationToken token)
+        public static IList<string> FindInDirectory(string directory, int maxDepth, CancellationToken token,
+            bool identifyByContent = false)
         {
             if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
                 return new List<string>();
-            return Scan(new[] { directory }, maxDepth, token, null);
+            return Scan(new[] { directory }, maxDepth, token, null, identifyByContent);
         }
 
         public static bool IsPclFileName(string path)

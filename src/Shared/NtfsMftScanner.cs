@@ -38,21 +38,27 @@ namespace PCLDownloadFix
         private const uint FsctlEnumUsnData = 0x000900B3;
         private const int ErrorHandleEof = 38;
         private const int ErrorMoreData = 234;
-        private const int OutputBufferSize = 1024 * 1024;
+        private const int OutputBufferSize = 4 * 1024 * 1024;
 
-        public static NtfsMftResult Scan(CancellationToken token, Action<NtfsMftProgress> progress)
+        public static NtfsMftResult Scan(IEnumerable<string> scopeRoots, CancellationToken token,
+            Action<NtfsMftProgress> progress)
         {
             var result = new NtfsMftResult { Paths = new List<string>() };
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var scopes = WindowsSearchScanner.NormalizeScopes(scopeRoots);
 
             foreach (var drive in GetNtfsFixedDrives())
             {
                 token.ThrowIfCancellationRequested();
+                var volumeRoot = drive.RootDirectory.FullName;
+                if (scopes.Count > 0 &&
+                    !scopes.Any(scope => WindowsSearchScanner.IsInScope(scope, new[] { volumeRoot })))
+                    continue;
+
                 try
                 {
-                    var volumeRoot = drive.RootDirectory.FullName;
                     var volumePath = @"\\.\" + drive.Name.TrimEnd('\\');
-                    var paths = ScanVolume(volumePath, volumeRoot, token, progress, result);
+                    var paths = ScanVolume(volumePath, volumeRoot, scopes, token, progress, result);
                     result.VolumesScanned++;
 
                     foreach (var path in paths)
@@ -66,9 +72,13 @@ namespace PCLDownloadFix
                 }
                 catch (Exception ex)
                 {
-                    if (string.IsNullOrEmpty(result.Error)) result.Error = ex.Message;
+                    if (string.IsNullOrEmpty(result.Error))
+                        result.Error = "扫描 " + volumeRoot + " 失败：" + ex.Message;
                 }
             }
+
+            if (result.VolumesScanned == 0 && string.IsNullOrEmpty(result.Error) && scopes.Count > 0)
+                result.Error = "所选扫描范围中没有可读取的 NTFS 分区。";
 
             result.Paths = result.Paths
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
@@ -95,8 +105,8 @@ namespace PCLDownloadFix
             }
         }
 
-        private static IList<string> ScanVolume(string volumePath, string volumeRoot, CancellationToken token,
-            Action<NtfsMftProgress> progress, NtfsMftResult result)
+        private static IList<string> ScanVolume(string volumePath, string volumeRoot, IList<string> scopes,
+            CancellationToken token, Action<NtfsMftProgress> progress, NtfsMftResult result)
         {
             using (var handle = CreateFile(volumePath, GenericRead,
                 FileShareRead | FileShareWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero))
@@ -106,7 +116,7 @@ namespace PCLDownloadFix
                     var error = Marshal.GetLastWin32Error();
                     if (error == 5)
                         throw new UnauthorizedAccessException("读取 NTFS MFT 需要管理员权限。请以管理员身份运行本工具，或改用 Windows 搜索索引。");
-                    throw new Win32Exception(error);
+                    throw new Win32Exception(error, "无法打开 NTFS 卷 " + volumeRoot + "。");
                 }
 
                 var directories = new Dictionary<ulong, DirectoryEntry>();
@@ -123,6 +133,7 @@ namespace PCLDownloadFix
                     };
 
                     long records = 0;
+                    ulong lastFileReference = 0;
                     while (true)
                     {
                         token.ThrowIfCancellationRequested();
@@ -132,19 +143,23 @@ namespace PCLDownloadFix
                         var ok = DeviceIoControl(handle, FsctlEnumUsnData, input,
                             Marshal.SizeOf(typeof(MftEnumData)), output, OutputBufferSize,
                             out bytesReturned, IntPtr.Zero);
+                        var moreData = false;
 
                         if (!ok)
                         {
                             var error = Marshal.GetLastWin32Error();
                             if (error == ErrorHandleEof) break;
-                            if (error == ErrorMoreData && bytesReturned > 0)
+                            if (error == ErrorMoreData && bytesReturned >= 8)
                             {
-                                // Partial batch; parse what we have and continue from
-                                // the next file reference below.
+                                // The batch filled the output buffer. Continue from the
+                                // last record we actually parsed instead of trusting the
+                                // 8-byte header of a partial buffer.
+                                moreData = true;
                             }
                             else
                             {
-                                throw new Win32Exception(error);
+                                throw new Win32Exception(error,
+                                    "读取 " + volumeRoot + " 的 MFT 失败（Win32 错误 " + error + "）。");
                             }
                         }
 
@@ -166,6 +181,7 @@ namespace PCLDownloadFix
                             }
 
                             var fileReference = (ulong)Marshal.ReadInt64(output, offset + 8);
+                            lastFileReference = fileReference;
                             var parentReference = (ulong)Marshal.ReadInt64(output, offset + 16);
                             var attributes = (FileAttributes)Marshal.ReadInt32(output, offset + 52);
                             var nameLength = Marshal.ReadInt16(output, offset + 56);
@@ -188,8 +204,11 @@ namespace PCLDownloadFix
                                 if (fileReference != 5)
                                     directories[fileReference] = new DirectoryEntry(name, parentReference);
                             }
-                            else if (string.Equals(name, PclScanner.ExecutableName, StringComparison.OrdinalIgnoreCase))
+                            else if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                             {
+                                // Do not trust the file name. MFT provides the complete
+                                // list of EXEs; identity is checked from version info
+                                // after the paths are reconstructed.
                                 candidates.Add(new Candidate { Name = name, ParentReference = parentReference });
                             }
 
@@ -208,6 +227,14 @@ namespace PCLDownloadFix
                             });
                         }
 
+                        if (moreData)
+                        {
+                            if (parsed == 0)
+                                throw new Win32Exception(ErrorMoreData,
+                                    "读取 " + volumeRoot + " 的 MFT 时收到不完整的数据块。");
+                            if (lastFileReference == ulong.MaxValue) break;
+                            next = lastFileReference + 1;
+                        }
                         if (next == 0 || parsed == 0) break;
                         enumData.StartFileReferenceNumber = next;
                     }
@@ -222,7 +249,10 @@ namespace PCLDownloadFix
                 foreach (var candidate in candidates)
                 {
                     var path = BuildPath(candidate, directories, volumeRoot);
-                    if (path != null && File.Exists(path)) results.Add(path);
+                    if (path == null || !File.Exists(path)) continue;
+                    if (!WindowsSearchScanner.IsInScope(path, scopes)) continue;
+                    if (!PclIdentity.IsPclExecutable(path)) continue;
+                    results.Add(path);
                 }
                 return results;
             }
