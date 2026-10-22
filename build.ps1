@@ -79,6 +79,8 @@ Copy-Item (Join-Path $root "src") $sourceDir -Recurse -Force
 New-Item -ItemType Directory -Path (Join-Path $sourceDir "tools") -Force | Out-Null
 Copy-Item (Join-Path $root "tools\DonorBuilder") (Join-Path $sourceDir "tools") -Recurse -Force
 Copy-Item (Join-Path $root "tools\MethodDiff") (Join-Path $sourceDir "tools") -Recurse -Force
+$fetchScript = Join-Path $root "tools\fetch-android-tools.ps1"
+if (Test-Path $fetchScript) { Copy-Item $fetchScript (Join-Path $sourceDir "tools") -Force }
 Copy-Item (Join-Path $root "resources") $sourceDir -Recurse -Force
 Copy-Item (Join-Path $root "third_party") $sourceDir -Recurse -Force
 # The Android toolchain is shipped separately under tools/android; do not duplicate

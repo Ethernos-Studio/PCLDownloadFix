@@ -78,6 +78,8 @@ namespace PCLDownloadFix
                 var manifestPath = Path.Combine(decode, "AndroidManifest.xml");
                 if (!File.Exists(manifestPath))
                     throw new InvalidDataException("apktool 没有生成 AndroidManifest.xml。");
+                var version = ReadApktoolVersion(decode);
+                if (!string.IsNullOrEmpty(version)) Step(result, options, "FCL 版本：" + version);
 
                 Step(result, options, "修改包名、应用名和组件引用...");
                 PatchManifest(manifestPath);
@@ -195,6 +197,18 @@ namespace PCLDownloadFix
             }
 
             doc.Save(manifestPath);
+        }
+
+        private static string ReadApktoolVersion(string decodeDir)
+        {
+            var path = Path.Combine(decodeDir, "apktool.yml");
+            if (!File.Exists(path)) return null;
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var index = line.IndexOf("versionName:", StringComparison.Ordinal);
+                if (index >= 0) return line.Substring(index + "versionName:".Length).Trim();
+            }
+            return null;
         }
 
         private static void PatchApktoolMetadata(string decodeDir)
