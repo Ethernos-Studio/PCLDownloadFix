@@ -246,21 +246,21 @@ namespace PCLDownloadFix
             else
             {
                 var text = File.ReadAllText(region);
-                text = ReplaceMethod(text, "isChinaMainlandMachine", "()Z",
-                    ".registers 1\r\n    const/4 v0, 0x0\r\n    return v0");
                 text = ReplaceMethod(text, "isChinaMainlandNetwork", "()Z",
-                    ".registers 1\r\n    const/4 v0, 0x0\r\n    return v0");
+                    ".registers 1\r\n    const/4 v0, 0x0\r\n    return v0", true);
+                text = ReplaceMethod(text, "isChinaMainlandMachine", "()Z",
+                    ".registers 1\r\n    const/4 v0, 0x0\r\n    return v0", false);
                 text = ReplaceMethod(text, "init", "()V",
-                    ".registers 0\r\n    return-void");
+                    ".registers 0\r\n    return-void", false);
                 text = ReplaceMethod(text, "chinaMainlandNetworkAsync",
                     "()Ljava/util/concurrent/CompletableFuture;",
                     ".registers 1\r\n    const/4 v0, 0x0\r\n    invoke-static {v0}, Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;\r\n" +
                     "    move-result-object v0\r\n    invoke-static {v0}, Ljava/util/concurrent/CompletableFuture;->completedFuture(Ljava/lang/Object;)Ljava/util/concurrent/CompletableFuture;\r\n" +
-                    "    move-result-object v0\r\n    return-object v0");
+                    "    move-result-object v0\r\n    return-object v0", false);
                 text = ReplaceMethod(text, "observeChinaMainlandNetwork",
                     "(Ljava/util/function/Consumer;)V",
                     ".registers 2\r\n    const/4 v0, 0x0\r\n    invoke-static {v0}, Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;\r\n" +
-                    "    move-result-object v0\r\n    invoke-interface {p0, v0}, Ljava/util/function/Consumer;->accept(Ljava/lang/Object;)V\r\n    return-void");
+                    "    move-result-object v0\r\n    invoke-interface {p0, v0}, Ljava/util/function/Consumer;->accept(Ljava/lang/Object;)V\r\n    return-void", false);
                 File.WriteAllText(region, text);
             }
 
@@ -275,13 +275,14 @@ namespace PCLDownloadFix
             }
         }
 
-        internal static string ReplaceMethod(string source, string name, string descriptor, string body)
+        internal static string ReplaceMethod(string source, string name, string descriptor, string body,
+            bool required = true)
         {
             var pattern = @"(?s)\.method[^\r\n]*\b" + Regex.Escape(name) +
                           Regex.Escape(descriptor) + @"[^\r\n]*\r?\n.*?\.end method";
             var replacement = ".method public static " + name + descriptor + "\r\n    " + body + "\r\n.end method";
             var result = Regex.Replace(source, pattern, replacement);
-            if (result == source)
+            if (result == source && required)
                 throw new InvalidDataException("找不到 RegionUtils." + name + descriptor + "。");
             return result;
         }
