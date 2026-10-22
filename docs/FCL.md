@@ -1,4 +1,4 @@
-# FCL 适配设计（未开放）
+# FCL 共存修复（v1.5.0 实验）
 
 FCL（FoldCraftLauncher）的限制与 HMCL 同类，但实现形态完全不同：
 
@@ -89,13 +89,29 @@ FCL 的 `shouldCheckNetwork()` 在设备不是中国大陆时直接返回 false�
 
 这只是使用说明，不是文件修复；会改变设备时区或网络，不能由本工具静默完成。
 
-## 当前决定
+## 当前实现（v1.5.0）
 
-v1.4.0 先交付 HMCL 的 JAR/EXE 修复；FCL 按钮暂不开放。
-后续若继续 FCL，优先顺序：
+已实现并随包提供：
 
-1. DEX 定位与只读诊断（不改 APK）；
-2. 输出修改后的未签名 APK + 校验；
-3. 接入 apksigner/JRE 或 C# v2 签名；
-4. 加“必须卸载原版/备份数据”的强制确认；
-5. 在真机/模拟器验证安装、启动和下载页。
+1. apktool 解码 FCL APK；
+2. 修改 Manifest 包名、label、组件绝对名、Provider authority；
+3. 修改 `RegionUtils` 的四个地区判断方法（如果该版本包含该类）；
+4. 修改 `BuildConfig.APPLICATION_ID` 与其他包名常量；
+5. 修改 `app_name` / `file_browser_provider` 资源；
+6. apktool 重建，uber-apk-signer 使用新证书做 v2/v3 签名；
+7. 输出 `*-fix.apk`，原 APK 不修改。
+
+已验证：
+
+- 使用官方 FCL 1.3.4.1 arm64 APK 完成解码、共存包名/名称、资源重建；
+- 最终 APK 校验为 v2 + v3 签名；
+- Manifest 为 `com.tungsten.fcl.fix`，label 为 `FCL (Fix)`；
+- FileProvider 等 authority 已改为 `.fix`。
+
+尚未验证：
+
+- 官方稳定版 1.3.4.1 发布在限制提交之前，没有 `RegionUtils`，因此无法用它验证下载页恢复；
+- 没有 Android 真机/模拟器连接，尚未验证安装、启动和实际下载；
+- 需要拿到包含限制提交的后续 FCL 构建后做端到端验证。
+
+下一步：在包含 `RegionUtils` 的 FCL APK 上验证 DEX 方法替换和下载页。

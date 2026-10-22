@@ -39,7 +39,7 @@ PCL 2.99 在源码中把 `ModSecret.RestrictMcDownload` 设为编译期常量 `T
 - **停留在 2.99 之前**：对 412（2.14）等尚未升级的版本，可关闭 PCL 自动更新，避免被自动升级到 2.99，从而继续使用现有下载功能
 - **批量模式**：独立窗口扫描、拖入或粘贴多个 PCL 实例，按内部构建号 `411.50/412.00` 关闭更新、`413.50/414.00` 修复下载
 - **HMCL 修复（v1.4.0）**：支持 HMCL 官方 JAR 与 EXE，替换 `RegionUtils` 地区判断，恢复下载页；自动备份、可还原
-- **FCL（规划中）**：FCL 限制在 Android APK 的 DEX 中，需重签名，正在单独适配
+- **FCL 共存修复（v1.5.0，实验）**：修改 DEX、包名为 `com.tungsten.fcl.fix`、应用名为 `FCL (Fix)`，重新签名，生成可与官方 FCL 共存的 APK
 - **完整恢复**：不仅下载页，整合包安装、资源详情页安装按钮、修改页原版卡片一并恢复
 - **更新后仍可修复**：PCL 自动更新会替换 EXE；工具会自动归档旧备份并继续修复，不再要求手动删除 `.bak`
 - **安全备份**：修改前创建 `Plain Craft Launcher 2.exe.pcl-original.bak`，并写入 `.pclfix.json` 还原清单
@@ -81,6 +81,41 @@ PCLDownloadFix.Console.exe hmcl-restore "D:\HMCL\HMCL.jar" --yes
 - 修复后 HMCL 自带的完整性签名会失效，HMCL 可能显示“未验证”或更新通道受限；不影响启动和下载。
 - HMCL 自动更新后需要重新修复。
 - 请只对自己有权修改的副本使用，并遵守 HMCL 的 GPL 许可。
+
+## FCL 共存修复（实验）
+
+FCL 的限制位于 Android APK 的 DEX 中。工具会生成一个**新的共存版 APK**，不修改原 APK：
+
+```text
+包名：com.tungsten.fcl.fix
+名称：FCL (Fix)
+```
+
+```powershell
+PCLDownloadFix.Console.exe fcl-patch "D:\FCL-arm64.apk" --yes
+```
+
+图形界面右上角 **FCL 共存** 提供同样功能。发布包自带 apktool、uber-apk-signer 和 Temurin JRE 17。
+
+![FCL 共存修复](docs/fcl.png)
+
+工具会：
+
+1. 用 apktool 解码 APK；
+2. 修改 Manifest 包名、应用名、FileProvider 等 authority；
+3. 将 `RegionUtils.isChinaMainlandNetwork()` 等地区判断改为 false；
+4. 替换 `BuildConfig.APPLICATION_ID` 与包名常量；
+5. 用新证书做 v2/v3 签名，输出 `*-fix.apk`。
+
+重要限制：
+
+- 新包使用新证书，**不能覆盖官方 FCL**，但可以与官方 FCL 共存；
+- 新包数据目录为空，游戏目录需要手动迁移；
+- 当前官方稳定版 1.3.4.1 发布在限制提交之前，没有 RegionUtils，工具会提示“无需修复”；
+- 需要针对包含限制提交的后续 FCL 构建验证；没有真机安装测试时请先备份数据；
+- 修改后的 APK 不要公开分发，遵守 FCL 的 GPL 许可。
+
+详细设计见 [docs/FCL.md](docs/FCL.md)。
 
 ## 支持版本
 

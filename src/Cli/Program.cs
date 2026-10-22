@@ -118,6 +118,12 @@ namespace PCLDownloadFix.Cli
                     if (!EnsureDisclaimer(args)) return 3;
                     return HmclCommand(args, _command);
                 }
+                if (_command == "fcl-patch")
+                {
+                    PrintBanner();
+                    if (!EnsureDisclaimer(args)) return 3;
+                    return FclCommand(args);
+                }
 
                 if (File.Exists(args[0]))
                 {
@@ -299,6 +305,70 @@ namespace PCLDownloadFix.Cli
                 Console.WriteLine("原版备份: " + result.BackupPath);
             if (!result.Success) Error(result.Info == null ? "修复失败。" : result.Info.Error);
             return result.Success ? 0 : 1;
+        }
+
+        private static int FclCommand(string[] args)
+        {
+            var path = args.Skip(1).FirstOrDefault(a => !a.StartsWith("-", StringComparison.Ordinal));
+            if (string.IsNullOrWhiteSpace(path))
+                throw new PatchException("请指定 FCL APK 路径。\r\n  fcl-patch \"D:\\FCL-arm64.apk\"");
+            path = Path.GetFullPath(path.Trim().Trim('"'));
+
+            var options = new FclPatchOptions();
+            for (var i = 1; i < args.Length; i++)
+            {
+                switch (args[i].ToLowerInvariant())
+                {
+                    case "--tools":
+                        if (i + 1 < args.Length) options.ToolsDirectory = args[++i];
+                        break;
+                    case "--java":
+                        if (i + 1 < args.Length) options.JavaPath = args[++i];
+                        break;
+                    case "--allow-ungated":
+                        options.AllowWithoutGate = true;
+                        break;
+                }
+            }
+            options.Log = text =>
+            {
+                if (!_json) Console.WriteLine("  " + text);
+            };
+
+            var result = FclPatcher.Patch(path, options);
+            if (_json)
+            {
+                var builder = new StringBuilder();
+                builder.AppendLine("{");
+                builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+                builder.AppendLine("  \"ok\": " + Bool(result.Success) + ",");
+                builder.AppendLine("  \"exitCode\": " + (result.Success ? 0 : 1) + ",");
+                builder.AppendLine("  \"command\": \"fcl-patch\",");
+                builder.AppendLine("  \"source\": " + JsonStringOrNull(result.SourcePath) + ",");
+                builder.AppendLine("  \"output\": " + JsonStringOrNull(result.OutputPath) + ",");
+                builder.AppendLine("  \"work\": " + JsonStringOrNull(result.WorkDirectory) + ",");
+                builder.AppendLine("  \"log\": " + JsonStringOrNull(result.LogPath) + ",");
+                builder.AppendLine("  \"message\": " + JsonStringOrNull(result.Message) + ",");
+                builder.AppendLine("  \"steps\": [" +
+                    string.Join(", ", result.Steps.Select(s => "\"" + JsonEscape(s) + "\"")) + "]");
+                builder.AppendLine("}");
+                WriteJson(builder.ToString().TrimEnd());
+                return result.Success ? 0 : 1;
+            }
+
+            Header("FCL 共存修复");
+            foreach (var step in result.Steps) Console.WriteLine("  · " + step);
+            if (result.Success)
+            {
+                Success(result.Message);
+                Console.WriteLine("输出：" + result.OutputPath);
+                Console.WriteLine("日志：" + result.LogPath);
+                Console.WriteLine("注意：这是使用新证书签名的共存版，无法覆盖官方 FCL；请先备份游戏数据。");
+                return 0;
+            }
+            Error(result.Message);
+            if (!string.IsNullOrEmpty(result.LogPath)) Console.WriteLine("日志：" + result.LogPath);
+            return 1;
         }
 
         private static string HmclJson(HmclInfo info, HmclPatchResult result, string command)
@@ -804,6 +874,7 @@ namespace PCLDownloadFix.Cli
             Console.WriteLine("  PCLDownloadFix.Console.exe hmcl-info   <JAR|EXE>  查看 HMCL 地区限制状态");
             Console.WriteLine("  PCLDownloadFix.Console.exe hmcl-patch  <JAR|EXE>  修复 HMCL 下载限制");
             Console.WriteLine("  PCLDownloadFix.Console.exe hmcl-restore <JAR|EXE> 恢复 HMCL 原版");
+            Console.WriteLine("  PCLDownloadFix.Console.exe fcl-patch   <APK>     生成 FCL 共存修复版（需 Java）");
             Console.WriteLine("  PCLDownloadFix.Console.exe selfcheck [--json]     校验本程序完整性");
             Console.WriteLine("  PCLDownloadFix.Console.exe gui                    打开图形界面");
             Console.WriteLine("  PCLDownloadFix.Console.exe --version              显示版本");

@@ -36,6 +36,10 @@ jobs:
       - name: Restore
         run: dotnet restore PCLDownloadFix.sln
 
+      - name: Fetch Android tools for FCL patching
+        shell: pwsh
+        run: .\tools\fetch-android-tools.ps1
+
       - name: Build, test and package
         shell: pwsh
         run: .\build.ps1

@@ -67,7 +67,43 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ======================================================================
-4. 本工具
+4. HMCL
+======================================================================
+
+HMCL（Hello Minecraft! Launcher）由 HMCL 开发团队维护：
+https://github.com/HMCL-dev/HMCL
+
+HMCL 使用 GPL-3.0 许可。本工具不包含 HMCL 的完整程序或资源；HMCL 修复仅在
+用户自己的 JAR/EXE 副本上替换 RegionUtils 类。相关权利归 HMCL 作者所有。
+
+======================================================================
+5. FCL（FoldCraftLauncher）
+======================================================================
+
+FCL 由 FCL-Team 维护：
+https://github.com/FCL-Team/FoldCraftLauncher
+
+FCL 使用 GPL-3.0 许可。本工具不包含 FCL 的完整 APK；FCL 共存修复仅在用户
+提供的 APK 副本上生成新的签名包，相关权利归 FCL 作者所有。
+
+======================================================================
+6. Apktool / uber-apk-signer / Temurin JRE
+======================================================================
+
+Apktool（Apache License 2.0）
+https://github.com/iBotPeaches/Apktool
+
+uber-apk-signer（Apache License 2.0）
+https://github.com/patrickfav/uber-apk-signer
+
+Eclipse Temurin JRE 17（GPLv2 with Classpath Exception）
+https://adoptium.net/
+
+这些组件随发布包的 tools/android 目录提供，仅用于解码、重打包和签名用户自己的
+Android APK。其许可证全文见各项目仓库。
+
+======================================================================
+7. 本工具
 ======================================================================
 
 PCLDownloadFix 由 Ethernos Studio 开发，自身代码采用 MIT License，Copyright (c) 2026 Ethernos Studio。

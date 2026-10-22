@@ -55,6 +55,23 @@ if (Test-Path $docsDir) {
     Copy-Item (Join-Path $docsDir "*") $targetDocs -Recurse -Force
 }
 
+Write-Host "==> 附带 Android 工具" -ForegroundColor Cyan
+$androidTools = Join-Path $root "third_party\android"
+if (Test-Path $androidTools) {
+    $targetTools = Join-Path $packageDir "tools\android"
+    New-Item -ItemType Directory -Path $targetTools -Force | Out-Null
+    foreach ($name in @("apktool.jar", "uber-apk-signer.jar")) {
+        $source = Join-Path $androidTools $name
+        if (Test-Path $source) { Copy-Item $source $targetTools -Force }
+    }
+    $jre = Join-Path $androidTools "jre"
+    if (Test-Path $jre) {
+        Copy-Item $jre (Join-Path $targetTools "jre") -Recurse -Force
+    }
+    $fetch = Join-Path $root "tools\fetch-android-tools.ps1"
+    if (Test-Path $fetch) { Copy-Item $fetch (Join-Path $packageDir "tools") -Force }
+}
+
 Write-Host "==> 附带源代码" -ForegroundColor Cyan
 $sourceDir = Join-Path $packageDir "source"
 New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
@@ -64,6 +81,10 @@ Copy-Item (Join-Path $root "tools\DonorBuilder") (Join-Path $sourceDir "tools") 
 Copy-Item (Join-Path $root "tools\MethodDiff") (Join-Path $sourceDir "tools") -Recurse -Force
 Copy-Item (Join-Path $root "resources") $sourceDir -Recurse -Force
 Copy-Item (Join-Path $root "third_party") $sourceDir -Recurse -Force
+# The Android toolchain is shipped separately under tools/android; do not duplicate
+# the 100+ MB JRE/tools inside the source archive.
+$sourceAndroid = Join-Path $sourceDir "third_party\android"
+if (Test-Path $sourceAndroid) { Remove-Item $sourceAndroid -Recurse -Force }
 if (Test-Path (Join-Path $root "tests")) {
     Copy-Item (Join-Path $root "tests") $sourceDir -Recurse -Force
 }

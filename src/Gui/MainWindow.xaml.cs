@@ -292,6 +292,20 @@ namespace PCLDownloadFix.Gui
             await SelectPathAsync(_info.Path);
         }
 
+        private void Fcl_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var window = new FclWindow { Owner = this };
+                window.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "无法打开 FCL 共存窗口：" + ex.Message, "FCL 共存",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void Hmcl_Click(object sender, RoutedEventArgs e)
         {
             try

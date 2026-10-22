@@ -21,3 +21,10 @@ Desktop.ini
 
 # Test artifacts
 TestResults/
+
+# Large local samples / Android toolchain
+samples/
+third_party/android/apktool.jar
+third_party/android/uber-apk-signer.jar
+third_party/android/jre/
+third_party/android/jre17.zip

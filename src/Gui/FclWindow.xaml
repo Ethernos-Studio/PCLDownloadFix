@@ -1,0 +1,73 @@
+<Window x:Class="PCLDownloadFix.Gui.FclWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FCL 共存修复 - PCL 下载修复器（第三方）"
+        Width="820" Height="620" MinWidth="720" MinHeight="540"
+        WindowStartupLocation="CenterOwner"
+        Background="#F1F5F9" FontFamily="Microsoft YaHei UI"
+        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver"
+        Icon="Assets/app.ico">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="FCL 共存修复（实验）" FontSize="24" FontWeight="Bold" Foreground="#1E293B" />
+            <TextBlock Text="修改 DEX、包名与应用名，生成可与官方 FCL 共存的 FCL (Fix) APK。"
+                       FontSize="12" Foreground="#64748B" Margin="0,5,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,20,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="PathBox" Height="34" VerticalContentAlignment="Center" Padding="10,0"
+                     FontSize="12.5" />
+            <Button Grid.Column="1" Content="浏览..." Width="86" Height="34" Margin="8,0,0,0"
+                    Click="Browse_Click" />
+            <Button x:Name="PatchButton" Grid.Column="2" Content="生成共存版" Width="110" Height="34"
+                    Margin="8,0,0,0" Background="#2563EB" Foreground="White" BorderThickness="0"
+                    Click="Patch_Click" />
+        </Grid>
+
+        <Border Grid.Row="2" Background="#FEF3C7" CornerRadius="8" Padding="12" Margin="0,14,0,0">
+            <TextBlock Foreground="#92400E" FontSize="11.5" TextWrapping="Wrap"
+                       Text="使用随包提供的 Temurin JRE 17、apktool 和 uber-apk-signer。生成的是新包名 com.tungsten.fcl.fix 的共存版，使用新证书，不能覆盖官方 FCL；官方 FCL 保持不动。首次启动数据目录为空，请自行迁移游戏目录。" />
+        </Border>
+
+        <Border Grid.Row="3" Background="White" CornerRadius="10" Margin="0,14,0,0" Padding="14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="StatusText" Foreground="#475569" FontSize="12"
+                           TextWrapping="Wrap" Text="选择或拖入 FCL 的 APK。" />
+                <TextBox x:Name="LogBox" Grid.Row="1" Margin="0,10,0,0" IsReadOnly="True"
+                         FontFamily="Consolas" FontSize="11" Background="#F8FAFC"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="4" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="OutputText" Foreground="#64748B" FontSize="11.5"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="打开输出目录" Width="110" Height="34" Margin="0,0,8,0"
+                        Click="OpenOutput_Click" />
+                <Button Content="关闭" Width="80" Height="34" Click="Close_Click" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

@@ -198,6 +198,10 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                    <Button Content="FCL 共存" Click="Fcl_Click"
+                            Background="#33FFFFFF" Foreground="White" BorderThickness="0"
+                            Padding="12,7" Margin="0,0,8,0" Cursor="Hand" FontSize="12"
+                            ToolTip="生成可与官方 FCL 共存的 FCL (Fix) APK" />
                     <Button Content="HMCL 修复" Click="Hmcl_Click"
                             Background="#33FFFFFF" Foreground="White" BorderThickness="0"
                             Padding="12,7" Margin="0,0,8,0" Cursor="Hand" FontSize="12"
@@ -207,7 +211,7 @@
                             Padding="12,7" Margin="0,0,10,0" Cursor="Hand" FontSize="12"
                             ToolTip="批量扫描、检测和处理多个 PCL 实例" />
                     <Border Background="#22FFFFFF" CornerRadius="12" Padding="12,6">
-                        <TextBlock x:Name="VersionBadge" Text="v1.4.0" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                        <TextBlock x:Name="VersionBadge" Text="v1.5.0" FontSize="12" Foreground="White" FontWeight="SemiBold" />
                     </Border>
                 </StackPanel>
             </Grid>
@@ -402,7 +406,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel>
-                                <TextBlock x:Name="AboutVersion" Text="PCL 下载修复器（第三方） v1.4.0" FontSize="15" FontWeight="SemiBold"
+                                <TextBlock x:Name="AboutVersion" Text="PCL 下载修复器（第三方） v1.5.0" FontSize="15" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimary}" />
                                 <TextBlock Text="开发者：Ethernos Studio" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}" Margin="0,4,0,8" />
