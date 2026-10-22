@@ -103,15 +103,18 @@ FCL 的 `shouldCheckNetwork()` 在设备不是中国大陆时直接返回 false�
 
 已验证：
 
-- 使用官方 FCL 1.3.4.1 arm64 APK 完成解码、共存包名/名称、资源重建；
-- 最终 APK 校验为 v2 + v3 签名；
-- Manifest 为 `com.tungsten.fcl.fix`，label 为 `FCL (Fix)`；
-- FileProvider 等 authority 已改为 `.fix`。
+- 官方稳定版 1.3.4.1 arm64：解码、共存包名/名称、资源重建、v2/v3 签名；
+- **FCL main 分支 CI 构建**（包含限制提交 `a36e1e4` 之后代码）：
+  - 成功找到并修改 `RegionUtils.smali`
+  - `isChinaMainlandNetwork()` / `isChinaMainlandMachine()` 已变成 `const/4 v0, 0; return v0`
+  - `chinaMainlandNetworkAsync()` 返回 `completedFuture(false)`
+  - `observeChinaMainlandNetwork()` 直接回调 false
+  - 输出包名 `com.tungsten.fcl.fix`、label `FCL (Fix)`、authority `.fix`
+  - v2 + v3 签名验证通过
+- 包名常量替换不会误伤 `com.tungsten.fclcore` / `com.tungsten.fcllibrary`。
 
 尚未验证：
 
-- 官方稳定版 1.3.4.1 发布在限制提交之前，没有 `RegionUtils`，因此无法用它验证下载页恢复；
-- 没有 Android 真机/模拟器连接，尚未验证安装、启动和实际下载；
-- 需要拿到包含限制提交的后续 FCL 构建后做端到端验证。
+- 没有 Android 真机/模拟器连接，尚未验证安装、启动和实际下载页。
 
-下一步：在包含 `RegionUtils` 的 FCL APK 上验证 DEX 方法替换和下载页。
+下一步：在 Android 设备上安装 `*-fix.apk`，确认启动和下载页。

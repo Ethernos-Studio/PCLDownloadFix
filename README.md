@@ -111,8 +111,9 @@ PCLDownloadFix.Console.exe fcl-patch "D:\FCL-arm64.apk" --yes
 
 - 新包使用新证书，**不能覆盖官方 FCL**，但可以与官方 FCL 共存；
 - 新包数据目录为空，游戏目录需要手动迁移；
-- 当前官方稳定版 1.3.4.1 发布在限制提交之前，没有 RegionUtils，工具会提示“无需修复”；
-- 需要针对包含限制提交的后续 FCL 构建验证；没有真机安装测试时请先备份数据；
+- 官方稳定版 1.3.4.1 发布在限制提交之前，没有 RegionUtils，工具会提示“无需修复”；
+- 已用 FCL main 分支 CI 构建（含限制提交）验证 RegionUtils 方法替换、共存包名与 v2/v3 签名；
+- 尚未在 Android 真机/模拟器上验证安装、启动和下载页；请先备份数据；
 - 修改后的 APK 不要公开分发，遵守 FCL 的 GPL 许可。
 
 详细设计见 [docs/FCL.md](docs/FCL.md)。

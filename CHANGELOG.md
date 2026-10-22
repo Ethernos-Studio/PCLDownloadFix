@@ -10,7 +10,8 @@
 - 将 `RegionUtils` 的地区判断方法改为返回 false，并同步修改 `BuildConfig.APPLICATION_ID` 等包名常量。
 - 使用 apktool 解码/重建，uber-apk-signer 以新证书做 v2/v3 签名，输出 `*-fix.apk`。
 - 随包提供 apktool、uber-apk-signer 与 Temurin JRE 17；FCL 输出不修改原 APK。
-- 当前官方稳定版 1.3.4.1 尚未包含 RegionUtils（限制提交晚于该版本），工具会提示无需修复；该管线已用 1.3.4.1 验证解码、共存包名、资源、重打包与 v2/v3 签名。
+- 官方稳定版 1.3.4.1 尚未包含 RegionUtils（限制提交晚于该版本），工具会提示无需修复；该管线已用 1.3.4.1 验证解码、共存包名、资源、重打包与 v2/v3 签名。
+- 已用 FCL main 分支 CI 构建（包含限制提交）验证：RegionUtils 四个方法成功替换为 false，共存包名/authority 正确，v2/v3 签名通过。尚未在 Android 真机/模拟器验证安装与下载页。
 
 ## 1.4.0 - 2026-10-22
 
