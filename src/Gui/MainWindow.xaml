@@ -193,17 +193,21 @@
                     </Border>
                     <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="PCL 下载修复器（第三方）" FontSize="21" FontWeight="Bold" Foreground="White" />
-                        <TextBlock Text="Ethernos Studio · 第三方工具 · 恢复 PCL 2.99 的 Minecraft 下载与整合包安装功能"
+                        <TextBlock Text="Ethernos Studio · 第三方工具 · 恢复 PCL 2.99 与 HMCL 的 Minecraft 下载功能"
                                    FontSize="12" Foreground="#D6E4FF" Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                    <Button Content="HMCL 修复" Click="Hmcl_Click"
+                            Background="#33FFFFFF" Foreground="White" BorderThickness="0"
+                            Padding="12,7" Margin="0,0,8,0" Cursor="Hand" FontSize="12"
+                            ToolTip="修复 HMCL 的地区下载限制（JAR/EXE）" />
                     <Button Content="批量模式" Click="Batch_Click"
                             Background="#33FFFFFF" Foreground="White" BorderThickness="0"
                             Padding="12,7" Margin="0,0,10,0" Cursor="Hand" FontSize="12"
                             ToolTip="批量扫描、检测和处理多个 PCL 实例" />
                     <Border Background="#22FFFFFF" CornerRadius="12" Padding="12,6">
-                        <TextBlock x:Name="VersionBadge" Text="v1.3.4" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                        <TextBlock x:Name="VersionBadge" Text="v1.4.0" FontSize="12" Foreground="White" FontWeight="SemiBold" />
                     </Border>
                 </StackPanel>
             </Grid>
@@ -398,7 +402,7 @@
                     <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel>
-                                <TextBlock x:Name="AboutVersion" Text="PCL 下载修复器（第三方） v1.3.4" FontSize="15" FontWeight="SemiBold"
+                                <TextBlock x:Name="AboutVersion" Text="PCL 下载修复器（第三方） v1.4.0" FontSize="15" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimary}" />
                                 <TextBlock Text="开发者：Ethernos Studio" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}" Margin="0,4,0,8" />

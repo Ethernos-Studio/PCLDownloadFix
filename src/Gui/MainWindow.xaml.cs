@@ -292,6 +292,20 @@ namespace PCLDownloadFix.Gui
             await SelectPathAsync(_info.Path);
         }
 
+        private void Hmcl_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var window = new HmclWindow { Owner = this };
+                window.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "无法打开 HMCL 修复窗口：" + ex.Message, "HMCL 修复",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void Batch_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -631,4 +645,3 @@ namespace PCLDownloadFix.Gui
         }
     }
 }
-

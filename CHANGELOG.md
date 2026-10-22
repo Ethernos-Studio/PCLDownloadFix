@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0 - 2026-10-22
+
+### 新功能：HMCL 支持
+
+- 新增 HMCL 修复窗口和“HMCL 修复”入口，支持官方 `.jar` 与 `.exe`。
+- HMCL `.exe` 按 `HMCLauncher.exe + 追加 JAR` 处理，只替换内嵌 JAR 中的 `RegionUtils`。
+- 替换 `org/jackhuang/hmcl/util/RegionUtils.class`，使设备/网络地区判断返回 false，恢复 HMCL 下载页。
+- 自动创建 `.hmcl-original.bak`，支持一键恢复；替换前按目标加锁。
+- 新增 CLI：`hmcl-info`、`hmcl-patch`、`hmcl-restore`，支持 `--json`/`--yes`/`--no-backup`。
+- 保留 HMCL 版本、文件类型、地区限制/修复状态和备份路径信息。
+
+### FCL 状态
+
+- FCL 的限制位于 Android APK 的 DEX 中；修改后必须重新签名，无法沿用官方签名，安装时通常需要卸载原版。该适配仍在进行中，尚未开放按钮。
+
 ## 1.3.4 - 2026-10-21
 
 - 根据 v1.3.3 日志定位：MFT 枚举虽然成功，但路径重建使用了包含 16 位序列号的完整 64 位文件引用；根目录实际是 `0x0005000000000005`，不等于常量 5，导致所有路径被丢弃并显示 0 个实例。

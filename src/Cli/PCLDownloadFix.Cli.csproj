@@ -10,6 +10,8 @@
     <AssemblyTitle>PCL 下载修复器（控制台版）</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Compile Include="..\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
     <Reference Include="Mono.Cecil">
       <HintPath>..\..\third_party\Mono.Cecil.dll</HintPath>
@@ -17,6 +19,7 @@
     </Reference>
     <EmbeddedResource Include="..\..\third_party\Mono.Cecil.dll" LogicalName="PCLDownloadFix.Mono.Cecil.dll" />
     <EmbeddedResource Include="..\..\resources\RestoreDonor.dll" LogicalName="PCLDownloadFix.RestoreDonor.dll" />
+    <EmbeddedResource Include="..\..\resources\HmclRegionUtils.class" LogicalName="PCLDownloadFix.HmclRegionUtils.class" />
   </ItemGroup>
 </Project>
 

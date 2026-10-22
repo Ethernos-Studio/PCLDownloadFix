@@ -112,6 +112,12 @@ namespace PCLDownloadFix.Cli
                     if (!EnsureDisclaimer(args)) return 3;
                     return Verify(args, _command == "info");
                 }
+                if (_command == "hmcl-info" || _command == "hmcl-patch" || _command == "hmcl-restore")
+                {
+                    PrintBanner();
+                    if (!EnsureDisclaimer(args)) return 3;
+                    return HmclCommand(args, _command);
+                }
 
                 if (File.Exists(args[0]))
                 {
@@ -240,6 +246,85 @@ namespace PCLDownloadFix.Cli
             Console.WriteLine("请将上面的 EXE SHA-256 与 GitHub Release / SHA256SUMS.txt 公布的值比对；一致即表示文件未被修改。");
             Console.WriteLine("项目主页：" + result.ProjectUrl);
             return result.AllEmbeddedOk ? 0 : 1;
+        }
+
+        private static int HmclCommand(string[] args, string command)
+        {
+            var path = args.Skip(1).FirstOrDefault(a => !a.StartsWith("-", StringComparison.Ordinal));
+            if (string.IsNullOrWhiteSpace(path))
+                throw new PatchException("请指定 HMCL 的 .jar 或 .exe 路径。\r\n  hmcl-patch \"D:\\HMCL\\HMCL-3.16.5.jar\"");
+            path = Path.GetFullPath(path.Trim().Trim('"'));
+
+            if (command == "hmcl-info")
+            {
+                var info = HmclPatcher.Inspect(path);
+                if (_json)
+                {
+                    WriteJson(HmclJson(info, null, command));
+                    return info.Success ? 0 : 2;
+                }
+                Header("HMCL 信息");
+                Console.WriteLine("文件    : " + info.Path);
+                Console.WriteLine("类型    : " + (info.Kind == HmclPackageKind.Executable ? "EXE（追加 JAR）" : "JAR"));
+                Console.WriteLine("版本    : " + (info.Version ?? "未知"));
+                Console.WriteLine("地区限制: " + (info.HasRegionGate ? (info.IsPatched ? "已修复" : "存在") : "不存在"));
+                Console.WriteLine("原版备份: " + (info.BackupExists ? info.BackupPath : "无"));
+                if (!info.Success) Error(info.Error);
+                return info.Success ? 0 : 2;
+            }
+
+            if (command == "hmcl-restore")
+            {
+                var restored = HmclPatcher.Restore(path);
+                if (_json)
+                {
+                    WriteJson(HmclJson(restored.Info, restored, command));
+                    return restored.Success ? 0 : 1;
+                }
+                Header("恢复 HMCL");
+                Console.WriteLine(restored.Message);
+                return restored.Success ? 0 : 1;
+            }
+
+            var backup = !args.Any(a => string.Equals(a, "--no-backup", StringComparison.OrdinalIgnoreCase));
+            var result = HmclPatcher.Patch(path, backup);
+            if (_json)
+            {
+                WriteJson(HmclJson(result.Info, result, command));
+                return result.Success ? 0 : 1;
+            }
+            Header("修复 HMCL");
+            Console.WriteLine(result.Message);
+            if (!string.IsNullOrEmpty(result.BackupPath))
+                Console.WriteLine("原版备份: " + result.BackupPath);
+            if (!result.Success) Error(result.Info == null ? "修复失败。" : result.Info.Error);
+            return result.Success ? 0 : 1;
+        }
+
+        private static string HmclJson(HmclInfo info, HmclPatchResult result, string command)
+        {
+            var ok = result == null ? info != null && info.Success : result.Success;
+            var builder = new StringBuilder();
+            builder.AppendLine("{");
+            builder.AppendLine("  \"schema\": " + SchemaVersion + ",");
+            builder.AppendLine("  \"ok\": " + Bool(ok) + ",");
+            builder.AppendLine("  \"exitCode\": " + (ok ? 0 : 1) + ",");
+            builder.AppendLine("  \"command\": \"" + JsonEscape(command) + "\",");
+            builder.AppendLine("  \"target\": " + JsonStringOrNull(info == null ? null : info.Path) + ",");
+            builder.AppendLine("  \"kind\": " + JsonStringOrNull(info == null ? null :
+                (info.Kind == HmclPackageKind.Executable ? "exe" : "jar")) + ",");
+            builder.AppendLine("  \"version\": " + JsonStringOrNull(info == null ? null : info.Version) + ",");
+            builder.AppendLine("  \"hasRegionGate\": " + Bool(info != null && info.HasRegionGate) + ",");
+            builder.AppendLine("  \"patched\": " + Bool(info != null && info.IsPatched) + ",");
+            builder.AppendLine("  \"backup\": " + JsonStringOrNull(
+                result != null && !string.IsNullOrEmpty(result.BackupPath)
+                    ? result.BackupPath
+                    : info == null ? null : info.BackupPath) + ",");
+            builder.AppendLine("  \"changed\": " + Bool(result != null && result.Changed) + ",");
+            builder.AppendLine("  \"message\": " + JsonStringOrNull(result == null ? null : result.Message) + ",");
+            builder.AppendLine("  \"error\": " + JsonStringOrNull(info == null ? null : info.Error));
+            builder.AppendLine("}");
+            return builder.ToString().TrimEnd();
         }
 
         private static int Patch(string[] args)
@@ -716,6 +801,9 @@ namespace PCLDownloadFix.Cli
             Console.WriteLine("  PCLDownloadFix.Console.exe info    [EXE] [--json]  显示详细信息");
             Console.WriteLine("  PCLDownloadFix.Console.exe disable-update [EXE]   关闭 PCL 自动更新（停留当前版本）");
             Console.WriteLine("  PCLDownloadFix.Console.exe enable-update  [EXE]   恢复 PCL 自动更新");
+            Console.WriteLine("  PCLDownloadFix.Console.exe hmcl-info   <JAR|EXE>  查看 HMCL 地区限制状态");
+            Console.WriteLine("  PCLDownloadFix.Console.exe hmcl-patch  <JAR|EXE>  修复 HMCL 下载限制");
+            Console.WriteLine("  PCLDownloadFix.Console.exe hmcl-restore <JAR|EXE> 恢复 HMCL 原版");
             Console.WriteLine("  PCLDownloadFix.Console.exe selfcheck [--json]     校验本程序完整性");
             Console.WriteLine("  PCLDownloadFix.Console.exe gui                    打开图形界面");
             Console.WriteLine("  PCLDownloadFix.Console.exe --version              显示版本");
@@ -730,7 +818,7 @@ namespace PCLDownloadFix.Cli
             Console.WriteLine("      --pause           执行结束后等待按键");
             Console.WriteLine();
             Console.WriteLine("不指定 EXE 时，会在当前目录和程序目录自动查找 Plain Craft Launcher 2.exe。");
-            Console.WriteLine("执行 patch/restore/verify/info/disable-update/enable-update 前会显示免责声明并要求确认。");
+            Console.WriteLine("执行 patch/restore/verify/info/disable-update/enable-update/hmcl-patch/hmcl-restore 前会显示免责声明并要求确认。");
             Console.WriteLine("退出码：0 成功；1 失败；2 不支持的文件；3 未确认免责声明。");
             Console.WriteLine("建议先完全关闭 PCL。");
         }

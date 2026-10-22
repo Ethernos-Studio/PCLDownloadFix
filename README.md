@@ -38,6 +38,8 @@ PCL 2.99 在源码中把 `ModSecret.RestrictMcDownload` 设为编译期常量 `T
 - **一键修复**：自动识别 PCL 2.99 正式版 (413)、快照版 (414) 及结构兼容的后续快照
 - **停留在 2.99 之前**：对 412（2.14）等尚未升级的版本，可关闭 PCL 自动更新，避免被自动升级到 2.99，从而继续使用现有下载功能
 - **批量模式**：独立窗口扫描、拖入或粘贴多个 PCL 实例，按内部构建号 `411.50/412.00` 关闭更新、`413.50/414.00` 修复下载
+- **HMCL 修复（v1.4.0）**：支持 HMCL 官方 JAR 与 EXE，替换 `RegionUtils` 地区判断，恢复下载页；自动备份、可还原
+- **FCL（规划中）**：FCL 限制在 Android APK 的 DEX 中，需重签名，正在单独适配
 - **完整恢复**：不仅下载页，整合包安装、资源详情页安装按钮、修改页原版卡片一并恢复
 - **更新后仍可修复**：PCL 自动更新会替换 EXE；工具会自动归档旧备份并继续修复，不再要求手动删除 `.bak`
 - **安全备份**：修改前创建 `Plain Craft Launcher 2.exe.pcl-original.bak`，并写入 `.pclfix.json` 还原清单
@@ -48,6 +50,37 @@ PCL 2.99 在源码中把 `ModSecret.RestrictMcDownload` 设为编译期常量 `T
 - **可回归验证**：内置 xUnit 单元测试、CLI 契约测试与可选的真实 PCL 集成测试，GitHub Actions 自动构建
 - **双形态**：图形界面 + 控制台，均支持命令行参数与自动化
 - **完全离线**：不上传文件、不联网、不注入进程
+
+## HMCL 修复
+
+HMCL PR #7017 在判断设备/网络位于中国大陆时禁用下载页。本工具直接替换 HMCL 的：
+
+```text
+org/jackhuang/hmcl/util/RegionUtils.class
+```
+
+替换后的类只让 `init()` 空操作、地区判断返回 false，不修改下载源或其他功能。
+
+支持两种官方格式：
+
+- `HMCL-*.jar`
+- `HMCL-*.exe`：官方 EXE 是 `HMCLauncher.exe` 后面追加完整 JAR，工具只替换追加的 JAR，不修改启动器。
+
+```powershell
+PCLDownloadFix.Console.exe hmcl-info "D:\HMCL\HMCL.jar"
+PCLDownloadFix.Console.exe hmcl-patch "D:\HMCL\HMCL.jar" --yes
+PCLDownloadFix.Console.exe hmcl-restore "D:\HMCL\HMCL.jar" --yes
+```
+
+图形界面右上角 **HMCL 修复** 提供同样的检测、备份、修复和恢复操作。
+
+![HMCL 修复](docs/hmcl.png)
+
+注意事项：
+
+- 修复后 HMCL 自带的完整性签名会失效，HMCL 可能显示“未验证”或更新通道受限；不影响启动和下载。
+- HMCL 自动更新后需要重新修复。
+- 请只对自己有权修改的副本使用，并遵守 HMCL 的 GPL 许可。
 
 ## 支持版本
 

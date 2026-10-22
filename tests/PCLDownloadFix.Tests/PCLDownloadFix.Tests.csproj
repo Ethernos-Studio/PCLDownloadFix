@@ -6,6 +6,8 @@
     <RootNamespace>PCLDownloadFix.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Compile Include="..\..\src\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
     <Reference Include="Mono.Cecil">
       <HintPath>..\..\third_party\Mono.Cecil.dll</HintPath>
@@ -13,8 +15,11 @@
     </Reference>
     <EmbeddedResource Include="..\..\third_party\Mono.Cecil.dll" LogicalName="PCLDownloadFix.Mono.Cecil.dll" />
     <EmbeddedResource Include="..\..\resources\RestoreDonor.dll" LogicalName="PCLDownloadFix.RestoreDonor.dll" />
+    <EmbeddedResource Include="..\..\resources\HmclRegionUtils.class" LogicalName="PCLDownloadFix.HmclRegionUtils.class" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
