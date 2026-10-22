@@ -26,7 +26,32 @@ FCL 是 Android APK：
 
 ## 候选方案
 
-### A. APK 修改 + 重签名（用户已选择）
+### A. APK 修改 + 重签名（用户已选择共存版）
+
+共存版需要同时改：
+
+- `AndroidManifest.xml` 的 `package` → `com.tungsten.fcl.fix`
+- `android:label` / `app_name` → `FCL (Fix)`
+- FileProvider 等 `authorities`，以及代码里通过 `BuildConfig.APPLICATION_ID` 或
+  `getPackageName()` 拼接的 authority
+- DEX 里的 `RegionUtils` 方法
+- 重新做 v2 + v3 签名
+
+这不是只改两个字符串：FCL 有 FileProvider、Intent、数据目录等包名派生逻辑。
+二进制 APK 修改需要同时改 Manifest 二进制 XML、resources.arsc、DEX 和签名块，
+任何一处漏改都可能在安装或启动时崩溃。更可靠的共存版做法是源码级 fork：
+
+```kotlin
+applicationIdSuffix = ".fix"
+versionNameSuffix = " (Fix)"
+resValue("string", "app_name", "FCL (Fix)")
+```
+
+并在源码中让 `RegionUtils` 返回 false，然后用 CI/Android SDK 构建签名 APK。
+这需要 Android SDK/NDK，不适合塞进当前 Windows 小工具；当前工具可以在用户
+提供 APK 后做二进制验证版，但不能保证所有 FCL 版本/架构都稳定。
+
+### A0. 二进制 APK 修改 + 重签名（原计划）
 
 DEX 侧：
 
